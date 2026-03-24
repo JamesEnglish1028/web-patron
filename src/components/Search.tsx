@@ -1,7 +1,7 @@
 import * as React from "react";
 import TextInput from "./TextInput";
 import Button from "./Button";
-import Router from "next/router";
+import { useRouter } from "next/router";
 import SvgSearch from "icons/Search";
 import useLinkUtils from "hooks/useLinkUtils";
 import useSWR from "swr";
@@ -26,6 +26,7 @@ let searchData: null | SearchData = null;
  */
 
 const Search: React.FC<SearchProps> = ({ className, ...props }) => {
+  const router = useRouter();
   const [value, setValue] = React.useState("");
   const linkUtils = useLinkUtils();
   const { collection, error } = useCollection();
@@ -55,7 +56,7 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
     );
     if (!url) return;
     const link = linkUtils.buildCollectionLink(url);
-    Router.push(link, undefined, { shallow: true });
+    router.push(link, undefined, { shallow: true });
   };
 
   return (

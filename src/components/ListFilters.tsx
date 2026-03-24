@@ -1,6 +1,6 @@
 import * as React from "react";
 import Select from "./Select";
-import Router from "next/router";
+import { useRouter } from "next/router";
 import { CollectionData, FacetGroupData } from "interfaces";
 import FormLabel from "components/form/FormLabel";
 import useLinkUtils from "hooks/useLinkUtils";
@@ -27,6 +27,7 @@ const ListFilters: React.FC<{ collection: CollectionData }> = ({
 const FacetSelector: React.FC<{
   facetGroup: FacetGroupData;
 }> = ({ facetGroup }) => {
+  const router = useRouter();
   const linkUtils = useLinkUtils();
 
   const { label, facets } = facetGroup;
@@ -42,7 +43,7 @@ const FacetSelector: React.FC<{
     const url = linkUtils.buildCollectionLink(facet.href);
     // shallow route because we don't need to rerun getStaticProps for the new page,
     // just fetch the new collection client-side
-    Router.push(url, undefined, { shallow: true });
+    router.push(url, undefined, { shallow: true });
   };
   return (
     <div sx={{ m: 1 }}>
