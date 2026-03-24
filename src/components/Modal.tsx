@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Dialog } from "@ariakit/react/dialog";
-import { Icon, IconNames } from "@nypl/design-system-react-components";
 import Button from "components/Button";
+import Close from "icons/Close";
 
 export const modalButtonStyles = {
   m: 2,
@@ -76,11 +76,7 @@ const Modal: React.FC<ModalProps> = ({
           onClick={hide}
           sx={{ position: "absolute", top: 2, right: 2 }}
         >
-          <Icon
-            decorative={false}
-            name={IconNames.close}
-            sx={{ fontSize: 18 }}
-          />
+          <Close sx={{ fontSize: 18 }} />
         </Button>
       )}
       {children}

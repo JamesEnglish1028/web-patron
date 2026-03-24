@@ -1,13 +1,10 @@
-const withTM = require("next-transpile-modules")([
-  "@thepalaceproject/webpub-viewer"
-]);
 const {
   BugsnagBuildReporterPlugin,
   BugsnagSourceMapUploaderPlugin
 } = require("webpack-bugsnag-plugins");
 const chalk = require("chalk");
-const package = require("./package.json");
-const APP_VERSION = package.version;
+const appPackage = require("./package.json");
+const APP_VERSION = appPackage.version;
 const { NODE_ENV, CONFIG_FILE, REACT_AXE } = process.env;
 
 const log = (...message) =>
@@ -29,7 +26,8 @@ const RELEASE_STAGE =
     ? "qa"
     : "development";
 
-const BUILD_ID = `${APP_VERSION}-${GIT_BRANCH}.${GIT_COMMIT_SHA}`;
+const BUILD_ID =
+  process.env.BUILD_ID || `${APP_VERSION}-${GIT_BRANCH}.${GIT_COMMIT_SHA}`;
 
 // fetch the config file synchronously. This will wait until the command exits to continue.
 const APP_CONFIG = JSON.parse(
@@ -67,9 +65,11 @@ log(`Media Support: `, APP_CONFIG.mediaSupport);
 log(`Libraries: `, APP_CONFIG.libraries);
 
 const config = {
+  transpilePackages: ["@thepalaceproject/webpub-viewer"],
+  distDir: "_next",
   env: {
-    CONFIG_FILE: CONFIG_FILE,
-    REACT_AXE: REACT_AXE,
+    CONFIG_FILE,
+    REACT_AXE,
     APP_VERSION,
     BUILD_ID,
     GIT_BRANCH,
@@ -93,7 +93,7 @@ const config = {
         new webpack.IgnorePlugin({ resourceRegExp: /jsdom$/ })
       );
     // react-axe should only be bundled when REACT_AXE=true
-    !REACT_AXE === "true" &&
+    REACT_AXE !== "true" &&
       config.plugins.push(
         new webpack.IgnorePlugin({ resourceRegExp: /react-axe$/ })
       );
@@ -126,14 +126,4 @@ const config = {
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true"
 });
-module.exports = {
-  ...withTM(withBundleAnalyzer(config)),
-  distDir: "_next",
-  generateBuildId: async () => {
-    if (process.env.BUILD_ID) {
-      return process.env.BUILD_ID;
-    } else {
-      return `${new Date().getTime()}`;
-    }
-  }
-};
+module.exports = withBundleAnalyzer(config);

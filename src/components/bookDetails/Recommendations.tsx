@@ -13,7 +13,8 @@ const Recommendations: React.FC<{ book: AnyBook }> = ({ book }) => {
 
   const { data: recommendations, isValidating } = useSWR(
     relatedUrl ? [relatedUrl, token] : null,
-    fetchCollection
+    ([url, authToken]: readonly [string, string | undefined]) =>
+      fetchCollection(url, authToken)
   );
 
   const isLoading = !recommendations && isValidating;
