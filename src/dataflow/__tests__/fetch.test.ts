@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import fetchMock from "jest-fetch-mock";
 import fetchWithHeaders from "../fetch";
+import { FetchError } from "errors";
 
 describe("fetchWithHeaders", () => {
   test("adds the X-Requested-With header", async () => {
@@ -109,6 +110,51 @@ describe("fetchWithHeaders", () => {
       headers: {
         Authorization: "some token"
       },
+      method: "GET"
+    });
+  });
+
+  test("retries without the X-Requested-With header after a network or CORS failure", async () => {
+    fetchMock.mockRejectOnce(new TypeError("NetworkError when attempting to fetch resource."));
+    fetchMock.mockResponseOnce("you did it!");
+
+    await fetchWithHeaders("some-url", "some token", {
+      "Accept-Language": "*"
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "some-url", {
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        Authorization: "some token",
+        "Accept-Language": "*"
+      },
+      method: "GET"
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "some-url", {
+      headers: {
+        Authorization: "some token",
+        "Accept-Language": "*"
+      },
+      method: "GET"
+    });
+  });
+
+  test("throws FetchError when retry without X-Requested-With also fails", async () => {
+    fetchMock.mockRejectOnce(new TypeError("initial failure"));
+    fetchMock.mockRejectOnce(new TypeError("retry failure"));
+
+    await expect(fetchWithHeaders("some-url")).rejects.toThrow(FetchError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "some-url", {
+      headers: {
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      method: "GET"
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "some-url", {
+      headers: {},
       method: "GET"
     });
   });

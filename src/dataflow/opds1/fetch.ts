@@ -4,6 +4,7 @@ import { AnyBook, CollectionData, OPDS1 } from "interfaces";
 import { entryToBook, feedToCollection } from "dataflow/opds1/parse";
 import fetchWithHeaders from "dataflow/fetch";
 import parseSearchData from "dataflow/opds1/parseSearchData";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 const parser = new OPDSParser();
 /**
@@ -19,8 +20,8 @@ export async function fetchOPDS(
   // If the status code is not in the range 200-299,
   // we still try to parse and throw it.
   if (!response.ok) {
-    const json = await response.json();
-    throw new ServerError(url, response.status, json);
+    const details = await parseErrorResponse(response);
+    throw new ServerError(url, response.status, details);
   }
 
   const text = await response.text();
@@ -133,14 +134,39 @@ export function stripUndefined(json: any) {
  * search bar
  */
 export async function fetchSearchData(url: string) {
-  const response = await fetch(url);
+  const response = await fetch(toBrowserFetchUrl(url));
 
   if (!response.ok) {
-    const details = await response.json();
+    const details = await parseErrorResponse(response);
     throw new ServerError(url, response.status, details);
   }
 
   const text = await response.text();
   const data = await parseSearchData(text, url);
   return data;
+}
+
+async function parseErrorResponse(
+  response: Response
+): Promise<OPDS1.ProblemDocument> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (contentType.includes("application/json") || contentType.includes("+json")) {
+    try {
+      return await response.json();
+    } catch {
+      // fall through to text parser
+    }
+  }
+
+  const bodyText = await response.text();
+  const snippet = bodyText.trim().slice(0, 300);
+
+  return {
+    title: "Server Error",
+    detail: snippet
+      ? `Unexpected non-JSON error response body: ${snippet}`
+      : "Unexpected empty error response body.",
+    status: response.status
+  };
 }

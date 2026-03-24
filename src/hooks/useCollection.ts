@@ -24,7 +24,8 @@ export default function useCollection() {
     isValidating
   } = useSWR<CollectionData, Error | ApplicationError>(
     collectionUrl ? [collectionUrl, token] : null,
-    fetchCollection
+    ([url, tok]: readonly [string, string | undefined]) =>
+      fetchCollection(url, tok)
   );
 
   // make sure unidentified errors are wrapped in an ApplicationError
