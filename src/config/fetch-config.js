@@ -29,12 +29,31 @@ async function getAppConfig(configFileSetting) {
   if (configFileSetting.startsWith("http")) {
     return await fetchConfigFile(configFileSetting);
   }
-  // Handle absolute paths correctly
-  const configFilePath = path.isAbsolute(configFileSetting)
-    ? configFileSetting
-    : path.join(process.cwd(), configFileSetting);
-  if (!fs.existsSync(configFilePath)) {
-    throw new Error("Config file not found at: " + configFilePath);
+  let attemptedPaths = [];
+
+  // Resolve config paths robustly to tolerate unexpected CWD and stale absolute
+  // env vars like /community-config.yml in local development environments.
+  const configFilePath = (() => {
+    if (path.isAbsolute(configFileSetting)) {
+      attemptedPaths = [
+        configFileSetting,
+        path.resolve(__dirname, "..", "..", path.basename(configFileSetting))
+      ];
+      return attemptedPaths.find(candidate => fs.existsSync(candidate));
+    }
+
+    attemptedPaths = [
+      path.join(process.cwd(), configFileSetting),
+      path.resolve(__dirname, "..", "..", configFileSetting)
+    ];
+    return attemptedPaths.find(candidate => fs.existsSync(candidate));
+  })();
+
+  if (!configFilePath || !fs.existsSync(configFilePath)) {
+    const debugPath = attemptedPaths.length
+      ? attemptedPaths.join(" or ")
+      : configFileSetting;
+    throw new Error("Config file not found at: " + debugPath);
   }
   const text = fs.readFileSync(configFilePath, "utf8");
   return await parseConfig(text);
@@ -267,9 +286,7 @@ async function parseConfig(raw) {
 
 // Only execute if not being required for testing
 if (require.main === module) {
-  const configFileSetting = process.env.CONFIG_FILE;
-  if (typeof configFileSetting !== "string")
-    throw new AppSetupError("process.env.CONFIG_FILE must be set.");
+  const configFileSetting = process.env.CONFIG_FILE || "community-config.yml";
 
   // get the config and print it to stdout so next.config.js can use it
   getAppConfig(configFileSetting).then(val => {

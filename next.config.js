@@ -2,10 +2,12 @@ const {
   BugsnagBuildReporterPlugin,
   BugsnagSourceMapUploaderPlugin
 } = require("webpack-bugsnag-plugins");
+const path = require("path");
 const chalk = require("chalk");
 const appPackage = require("./package.json");
 const APP_VERSION = appPackage.version;
-const { NODE_ENV, CONFIG_FILE, REACT_AXE } = process.env;
+const { NODE_ENV, REACT_AXE } = process.env;
+const CONFIG_FILE = process.env.CONFIG_FILE || "community-config.yml";
 
 const log = (...message) =>
   console.log(chalk.blue("app info") + "  -", ...message);
@@ -32,7 +34,11 @@ const BUILD_ID =
 // fetch the config file synchronously. This will wait until the command exits to continue.
 const APP_CONFIG = JSON.parse(
   execSync("node --unhandled-rejections=strict src/config/fetch-config.js", {
-    encoding: "utf-8"
+    encoding: "utf-8",
+    env: {
+      ...process.env,
+      CONFIG_FILE
+    }
   })
 );
 
@@ -67,6 +73,7 @@ log(`Libraries: `, APP_CONFIG.libraries);
 const config = {
   transpilePackages: ["@thepalaceproject/webpub-viewer"],
   distDir: "_next",
+  outputFileTracingRoot: path.resolve(__dirname),
   env: {
     CONFIG_FILE,
     REACT_AXE,
