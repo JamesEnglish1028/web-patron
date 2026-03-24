@@ -1,5 +1,3 @@
-/* eslint-disable camelcase */
-
 /**
  * OPDS 2.0 DATA TYPES
  * Currently only used for support of a Library Registry, which is

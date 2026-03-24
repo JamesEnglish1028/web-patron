@@ -9,6 +9,7 @@ import { clientOnly } from "components/ClientOnly";
 import extractParam from "dataflow/utils";
 import Button from "components/Button";
 import { Text } from "components/Text";
+import { navigateToUrl } from "utils/navigation";
 
 /**
  * The SAML Auth handler sends you off to an external website to complete
@@ -31,7 +32,7 @@ const SamlAuthHandler: React.FC<{ method: ClientSamlMethod }> = ({
   React.useEffect(() => {
     // Redirect to SAML provider if not already signed in and no current error.
     if (!token && urlWithRedirect && !loginError) {
-      window.location.href = urlWithRedirect;
+      navigateToUrl(urlWithRedirect);
     }
   }, [token, signOut, urlWithRedirect, loginError]);
 

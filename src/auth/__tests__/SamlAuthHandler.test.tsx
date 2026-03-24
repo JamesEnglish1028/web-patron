@@ -1,6 +1,15 @@
 import * as React from "react";
 import { fixtures, render, waitFor } from "test-utils";
 import SamlAuthHandler from "../SamlAuthHandler";
+import { navigateToUrl } from "utils/navigation";
+
+jest.mock("utils/navigation", () => ({
+  navigateToUrl: jest.fn()
+}));
+
+const mockNavigateToUrl = navigateToUrl as jest.MockedFunction<
+  typeof navigateToUrl
+>;
 
 // we import the unwrapped render here because we don't need the context providers
 
@@ -9,19 +18,14 @@ test("shows loader while redirecting", () => {
   expect(utils.getByText("Logging in with SAML IdP 0...")).toBeInTheDocument();
 });
 
-beforeEach(() => {
-  // this will allow us to test that window.location changes
-  const location = new URL("http://test-domain.com");
-  delete (window as any).location;
-  (window as any).location = location;
-});
+beforeEach(() => mockNavigateToUrl.mockClear());
 
 test("redirects to proper auth url", async () => {
   render(<SamlAuthHandler method={fixtures.clientSamlMethod} />, {
     user: { token: undefined }
   });
   await waitFor(() => {
-    expect(window.location.href).toBe(
+    expect(mockNavigateToUrl).toHaveBeenCalledWith(
       "https://saml-auth.com/0&redirect_uri=http%3A%2F%2Ftest-domain.com%2Ftestlib"
     );
   });
@@ -33,7 +37,7 @@ test("does not redirect if there is a token", async () => {
       token: "some-token"
     }
   });
-  expect(window.location.href).toBe("http://test-domain.com/");
+  expect(mockNavigateToUrl).not.toHaveBeenCalled();
 });
 
 test("displays error message when loginError query param is present", () => {
@@ -66,7 +70,7 @@ test("does not redirect to SAML IdP when error is present", () => {
   });
 
   // Should not redirect when error is present
-  expect(window.location.href).toBe("http://test-domain.com/");
+  expect(mockNavigateToUrl).not.toHaveBeenCalled();
 });
 
 test('clicking "Try Again" clears error and attempts SAML redirect', async () => {

@@ -9,6 +9,7 @@ import { clientOnly } from "components/ClientOnly";
 import extractParam from "dataflow/utils";
 import Button from "components/Button";
 import { Text } from "components/Text";
+import { navigateToUrl } from "utils/navigation";
 
 /**
  * The OIDC Auth handler sends you off to an external website to complete
@@ -31,7 +32,7 @@ const OidcAuthHandler: React.FC<{ method: ClientOidcMethod }> = ({
   React.useEffect(() => {
     // Redirect to OIDC provider if not already signed in and no current error.
     if (!token && urlWithRedirect && !loginError) {
-      window.location.href = urlWithRedirect;
+      navigateToUrl(urlWithRedirect);
     }
   }, [token, urlWithRedirect, loginError]);
 

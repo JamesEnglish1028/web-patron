@@ -6,6 +6,7 @@ import useUser from "components/context/UserContext";
 import { clientOnly } from "components/ClientOnly";
 import useLoginRedirectUrl from "auth/useLoginRedirect";
 import ApplicationError from "errors";
+import { navigateToUrl } from "utils/navigation";
 
 const CleverAuthHandler: React.FC<{ method: OPDS1.CleverAuthMethod }> = ({
   method
@@ -34,7 +35,7 @@ const CleverAuthHandler: React.FC<{ method: OPDS1.CleverAuthMethod }> = ({
       });
     }
     if (!token) {
-      window.location.href = authUrl;
+      navigateToUrl(authUrl);
     }
   }, [token, authUrl]);
 

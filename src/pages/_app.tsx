@@ -1,6 +1,5 @@
 import * as React from "react";
 import { AppProps, NextWebVitalsMetric } from "next/app";
-import { IS_SERVER } from "../utils/env";
 import { ErrorBoundary } from "components/ErrorBoundary";
 import "css-overrides.css";
 import track from "analytics/track";

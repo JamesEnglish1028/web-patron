@@ -21,15 +21,26 @@ import fetchMock from "jest-fetch-mock";
 import * as fetch from "dataflow/opds1/fetch";
 import { ServerError } from "errors";
 import { MOCK_DATE_STRING } from "test-utils/mockToDateString";
+import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
 
 jest.mock("downloadjs");
 window.open = jest.fn();
 
 jest.mock("dataflow/opds1/fetch");
+jest.mock("utils/navigation", () => ({
+  navigateToUrl: jest.fn(),
+  navigateWindowToUrl: jest.fn()
+}));
 
 (fetch as any).fetchBook = jest.fn();
 const mockFetchBook = fetch.fetchBook as jest.MockedFunction<
   typeof fetch.fetchBook
+>;
+const mockNavigateToUrl = navigateToUrl as jest.MockedFunction<
+  typeof navigateToUrl
+>;
+const mockNavigateWindowToUrl = navigateWindowToUrl as jest.MockedFunction<
+  typeof navigateWindowToUrl
 >;
 /**
  * Borrowable
@@ -311,7 +322,11 @@ describe("reserved", () => {
 });
 
 describe("FulfillableBook", () => {
-  beforeEach(() => mockConfig({ companionApp: "simplye" }));
+  beforeEach(() => {
+    mockConfig({ companionApp: "simplye" });
+    mockNavigateToUrl.mockClear();
+    mockNavigateWindowToUrl.mockClear();
+  });
 
   const externalReadOnlineBook = mergeBook<FulfillableBook>({
     status: "fulfillable",
@@ -334,7 +349,12 @@ describe("FulfillableBook", () => {
           .fn()
           .mockReturnValue({ textContent: "", style: { cssText: "" } })
       },
-      location: { href: "" }
+      location: {
+        href: "",
+        assign: jest.fn(function (this: { href: string }, url: string) {
+          this.href = url;
+        })
+      }
     };
   }
 
@@ -451,7 +471,12 @@ describe("FulfillableBook", () => {
     expect(mockTab.document.createElement).toHaveBeenCalledWith("p");
     expect(mockTab.document.body.appendChild).toHaveBeenCalled();
 
-    await waitFor(() => expect(mockTab.location.href).toBe("/read-online"));
+    await waitFor(() => {
+      expect(mockNavigateWindowToUrl).toHaveBeenCalledWith(
+        mockTab,
+        "/read-online"
+      );
+    });
   });
 
   test("navigates the new tab to the external reader URL", async () => {
@@ -466,7 +491,10 @@ describe("FulfillableBook", () => {
     fireEvent.click(readOnline);
 
     await waitFor(() => {
-      expect(mockTab.location.href).toBe("/read-online");
+      expect(mockNavigateWindowToUrl).toHaveBeenCalledWith(
+        mockTab,
+        "/read-online"
+      );
     });
   });
 
@@ -475,13 +503,6 @@ describe("FulfillableBook", () => {
     // when the user has explicitly blocked popups for this site.
     window.open = jest.fn().mockReturnValue(null);
 
-    // jsdom throws "Not implemented: navigation" if window.location.href is
-    // assigned directly. Replace it with a plain writable object so we can
-    // assert on the fallback navigation without errors.
-    const originalLocation = window.location;
-    delete (window as any).location;
-    (window as any).location = { href: "" };
-
     setup(<FulfillmentCard book={externalReadOnlineBook} />);
     const readOnline = await screen.findByRole("button", {
       name: "Read Online"
@@ -489,13 +510,9 @@ describe("FulfillableBook", () => {
 
     fireEvent.click(readOnline);
 
-    // With newTab null, the component should fall back to navigating the
-    // current tab to the external reader URL.
     await waitFor(() => {
-      expect(window.location.href).toBe("/read-online");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith("/read-online");
     });
-
-    (window as any).location = originalLocation;
   });
 
   test("correct title and subtitle without redirect", () => {

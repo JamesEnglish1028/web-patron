@@ -1,5 +1,4 @@
 import { AppSetupError } from "errors";
-/* eslint-disable no-underscore-dangle */
 
 import { AppConfig } from "interfaces";
 

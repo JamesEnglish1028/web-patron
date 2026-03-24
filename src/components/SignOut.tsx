@@ -10,6 +10,7 @@ import { normalizeLink, UriTemplateTerms } from "utils/opds";
 import { useRouter } from "next/router";
 import useLinkUtils from "hooks/useLinkUtils";
 import useLibraryContext from "./context/LibraryContext";
+import { navigateToUrl } from "utils/navigation";
 
 interface SignOutProps {
   color?: string;
@@ -110,7 +111,7 @@ export const SignOut: React.FC<SignOutProps> = ({
           //  the browser has already dropped its local Palace credentials. In
           //  the future, we can report the error here.
         } finally {
-          window.location.href = signedOutUrl;
+          navigateToUrl(signedOutUrl);
         }
         return;
       }

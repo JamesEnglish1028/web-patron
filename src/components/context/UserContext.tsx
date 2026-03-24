@@ -273,16 +273,19 @@ export default function useUser() {
 
 // we only need the books out of a collection for loans,
 // so this is a utility to extract those.
-async function fetchLoans(
-  [url, token]: readonly [string, string | undefined, AppAuthMethod["type"]]
-) {
+async function fetchLoans([url, token]: readonly [
+  string,
+  string | undefined,
+  AppAuthMethod["type"]
+]) {
   const collection = await fetchCollection(url, token);
   return collection.books;
 }
 
-async function fetchPatronProfile(
-  [url, token]: readonly [string, string | undefined]
-) {
+async function fetchPatronProfile([url, token]: readonly [
+  string,
+  string | undefined
+]) {
   const headers: Record<string, string> = {};
   if (token) {
     headers.Authorization = token;

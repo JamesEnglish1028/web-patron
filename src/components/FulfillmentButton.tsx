@@ -17,6 +17,7 @@ import useUser from "components/context/UserContext";
 import downloadFile from "dataflow/download";
 import useError from "hooks/useError";
 import useLinkUtils from "hooks/useLinkUtils";
+import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
 import Stack from "./Stack";
 
 const FulfillmentButton: React.FC<{
@@ -109,9 +110,9 @@ const ReadOnlineExternal: React.FC<{
       // newTab can still be null if the user has explicitly blocked popups for
       // this site. Fall back to navigating the current tab in that case.
       if (newTab) {
-        newTab.location.href = externalReaderUrl;
+        navigateWindowToUrl(newTab, externalReaderUrl);
       } else {
-        window.location.href = externalReaderUrl;
+        navigateToUrl(externalReaderUrl);
       }
     } catch (e) {
       setLoading(false);
