@@ -29,13 +29,21 @@ export const SignOut: React.FC<SignOutProps> = ({
   const { buildMultiLibraryLink } = useLinkUtils();
   const { authMethods } = useLibraryContext();
 
+  // Prevent the performSignOut effect from firing twice under React 19
+  // Strict Mode's double-invocation (setup → cleanup → setup).
+  const performedSignOutRef = React.useRef(false);
+
   // Handles deferred sign-out: redirect-based auth methods (SAML, Clever, OIDC)
   // navigate to an unprotected page with performSignOut=true before clearing
   // credentials, ensuring the auth flow is not restarted mid-signout.
   React.useEffect(() => {
     if (router.query.performSignOut === "true") {
+      if (performedSignOutRef.current) return;
+      performedSignOutRef.current = true;
       signOut();
       router.replace(buildMultiLibraryLink("/signed-out"));
+    } else {
+      performedSignOutRef.current = false;
     }
   }, [router.query.performSignOut, signOut, router, buildMultiLibraryLink]);
 
