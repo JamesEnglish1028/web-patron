@@ -70,7 +70,6 @@
     "tslib": "^2.3.0"
   },
   "devDependencies": {
-    "@axe-core/react": "^4.1.0",
     "@babel/core": "^7.26.0",
     "@fetch-mock/jest": "^0.2.6",
     "@next/bundle-analyzer": "^16.2.1",

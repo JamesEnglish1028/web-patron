@@ -6,7 +6,7 @@ const path = require("path");
 const chalk = require("chalk");
 const appPackage = require("./package.json");
 const APP_VERSION = appPackage.version;
-const { NODE_ENV, REACT_AXE } = process.env;
+const { NODE_ENV } = process.env;
 const CONFIG_FILE = process.env.CONFIG_FILE || "community-config.yml";
 
 const log = (...message) =>
@@ -76,7 +76,6 @@ const config = {
   outputFileTracingRoot: path.resolve(__dirname),
   env: {
     CONFIG_FILE,
-    REACT_AXE,
     APP_VERSION,
     BUILD_ID,
     GIT_BRANCH,
@@ -98,11 +97,6 @@ const config = {
     !isServer &&
       config.plugins.push(
         new webpack.IgnorePlugin({ resourceRegExp: /jsdom$/ })
-      );
-    // react-axe should only be bundled when REACT_AXE=true
-    REACT_AXE !== "true" &&
-      config.plugins.push(
-        new webpack.IgnorePlugin({ resourceRegExp: /react-axe$/ })
       );
     // Fixes dependency on "fs" module.
     // We don't (and can't) depend on this in client-side code.

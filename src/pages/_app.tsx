@@ -1,7 +1,6 @@
 import * as React from "react";
-import ReactDOM from "react-dom";
 import { AppProps, NextWebVitalsMetric } from "next/app";
-import { IS_SERVER, REACT_AXE } from "../utils/env";
+import { IS_SERVER } from "../utils/env";
 import { ErrorBoundary } from "components/ErrorBoundary";
 import "css-overrides.css";
 import track from "analytics/track";
@@ -28,11 +27,6 @@ const MyApp = (props: AppProps) => {
     </ErrorBoundary>
   );
 };
-
-if (process.env.NODE_ENV === "development" && !IS_SERVER && REACT_AXE) {
-  const axe = require("@axe-core/react");
-  axe(React, ReactDOM, 1000, {});
-}
 
 export function reportWebVitals(metric: NextWebVitalsMetric) {
   track.webVitals(metric);

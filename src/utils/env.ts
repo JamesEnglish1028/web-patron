@@ -15,7 +15,6 @@ if (!appConfigString)
 export const APP_CONFIG: AppConfig = JSON.parse(appConfigString);
 export const IS_OPEN_EBOOKS = !!APP_CONFIG.openebooks;
 
-export const REACT_AXE = process.env.REACT_AXE;
 export const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 export const NODE_ENV = process.env.NODE_ENV;
 export const IS_SERVER = typeof window === "undefined";
