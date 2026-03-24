@@ -283,10 +283,13 @@ async function fetchLoans(
 async function fetchPatronProfile(
   [url, token]: readonly [string, string | undefined]
 ) {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = token;
+  }
+
   const response = await fetch(url, {
-    headers: {
-      Authorization: token
-    }
+    headers
   });
 
   if (!response.ok) {
