@@ -6,6 +6,8 @@ import { ScreenReaderOnly, Text } from "components/Text";
 import { shouldRedirectToCompanionApp } from "utils/fulfill";
 import SvgPhone from "icons/Phone";
 import { APP_CONFIG } from "utils/env";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 
 const BookStatus: React.FC<{ book: AnyBook }> = ({ book }) => {
   const { status } = book;
@@ -35,7 +37,12 @@ const BookStatus: React.FC<{ book: AnyBook }> = ({ book }) => {
   return (
     <div>
       <div sx={{ display: "flex", alignItems: "center" }}>
-        {redirectUser ? (
+        {status === "fulfillable" ? (
+          <FontAwesomeIcon
+            icon={faCircleCheck}
+            style={{ width: "1em", height: "1em", marginRight: "0.5rem" }}
+          />
+        ) : redirectUser ? (
           <SvgPhone sx={{ fontSize: 24 }} />
         ) : (
           <MediumIcon book={book} sx={{ mr: 1 }} />

@@ -3,13 +3,24 @@ import { LibraryData } from "../interfaces";
 import Search from "./Search";
 import Button, { NavButton, AnchorButton } from "./Button";
 import Link from "./Link";
-import BookIcon from "../icons/Book";
 import useLibraryContext from "./context/LibraryContext";
 import { Text } from "./Text";
 import Stack from "./Stack";
 import { AccountMenu } from "./AccountMenu";
 import useUser from "components/context/UserContext";
 import useLogin from "auth/useLogin";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBook } from "@fortawesome/free-solid-svg-icons";
+import { SxProp } from "theme-ui";
+
+const MyBooksIcon: React.FC<{ className?: string; sx?: SxProp }> = ({
+  className,
+  sx
+}) => (
+  <span className={className} sx={sx}>
+    <FontAwesomeIcon icon={faBook} />
+  </span>
+);
 
 const HeaderFC: React.FC<{ className?: string }> = ({ className }) => {
   const library = useLibraryContext();
@@ -112,7 +123,7 @@ const HeaderLinks: React.FC<{ library: LibraryData }> = ({ library }) => {
         variant="ghost"
         color="ui.black"
         href="/loans"
-        iconLeft={BookIcon}
+        iconLeft={MyBooksIcon}
         sx={{ mr: 1 }}
       >
         My Books

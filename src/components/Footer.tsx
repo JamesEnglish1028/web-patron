@@ -118,9 +118,39 @@ const DownloadSimplyECallout = () => (
       Our mobile app lets you browse, borrow and read from our whole collection
       of ebooks and audiobooks right on your phone!
     </Text>
-    <div sx={{ width: "75%", overflow: "hidden", ml: -3 }}>
-      <IosBadge sx={{ p: 3, pb: 0 }} />
-      <GooglePlayBadge />
+    <div
+      sx={{
+        mt: 2,
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2,
+        flexWrap: "wrap"
+      }}
+    >
+      <IosBadge
+        sx={{
+          p: 0,
+          lineHeight: 0,
+          "& svg": {
+            height: "44px",
+            width: "auto",
+            display: "block"
+          }
+        }}
+      />
+      <GooglePlayBadge
+        sx={{
+          p: 0,
+          lineHeight: 0,
+          "& img": {
+            height: "60px",
+            width: "auto !important",
+            maxWidth: "none",
+            display: "block"
+          }
+        }}
+      />
     </div>
   </div>
 );

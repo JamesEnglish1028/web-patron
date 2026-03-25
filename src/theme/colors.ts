@@ -32,7 +32,7 @@ const brand = {
 
 const colors = {
   // body color
-  text: ui.black,
+  text: ui.gray.extraDark,
   // body background color
   background: ui.white,
   ui,

@@ -9,11 +9,8 @@ import { truncateString } from "../../utils/string";
 import DetailField from "../BookMetaDetail";
 import ReportProblem from "./ReportProblem";
 import Head from "next/head";
-import { H1, H2, H3, ScreenReaderOnly, Text } from "components/Text";
+import { H1, H2, ScreenReaderOnly, Text } from "components/Text";
 import MediumIndicator from "components/MediumIndicator";
-import PalaceLogo from "components/PalaceLogo";
-import IosBadge from "components/storeBadges/IosBadge";
-import GooglePlayBadge from "components/storeBadges/GooglePlayBadge";
 import { useRouter } from "next/router";
 import extractParam from "dataflow/utils";
 import useSWR from "swr";
@@ -59,10 +56,6 @@ export const BookDetails: React.FC = () => {
         >
           <div sx={{ flex: ["1 1 auto", 0.33], mr: [0, 4], mb: [3, 0] }}>
             <BookCover book={book} sx={{ maxWidth: [180, "initial"] }} />
-
-            {APP_CONFIG.companionApp === "simplye" && (
-              <SimplyECallout sx={{ display: ["none", "block"] }} />
-            )}
           </div>
           <div
             sx={{
@@ -126,32 +119,5 @@ const Summary: React.FC<{ book: AnyBook; className?: string }> = ({
     />
   </div>
 );
-
-const SimplyECallout: React.FC<{ className?: string }> = ({ className }) => {
-  return (
-    <section
-      sx={{
-        mt: 4,
-        bg: "ui.gray.lightWarm",
-        display: "flex",
-        flexDirection: "column",
-        p: 3,
-        textAlign: "center"
-      }}
-      className={className}
-    >
-      <PalaceLogo sx={{ mt: 3, height: "120px" }} />
-      <H3 sx={{ mt: 0 }}>Download Palace</H3>
-      <Text>
-        Browse and read our collection of ebooks and audiobooks right from your
-        phone.
-      </Text>
-      <div sx={{ maxWidth: 140, mx: "auto", mt: 3 }}>
-        <IosBadge sx={{ m: "6%" }} />
-        <GooglePlayBadge />
-      </div>
-    </section>
-  );
-};
 
 export default BookDetails;

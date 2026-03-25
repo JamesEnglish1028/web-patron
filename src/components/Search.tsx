@@ -2,13 +2,24 @@ import * as React from "react";
 import TextInput from "./TextInput";
 import Button from "./Button";
 import { useRouter } from "next/router";
-import SvgSearch from "icons/Search";
 import useLinkUtils from "hooks/useLinkUtils";
 import useSWR from "swr";
 import useCollection from "hooks/useCollection";
 import { fetchSearchData } from "dataflow/opds1/fetch";
 import ApplicationError from "errors";
 import { SearchData } from "interfaces";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { SxProp } from "theme-ui";
+
+const SearchIcon: React.FC<{ className?: string; sx?: SxProp }> = ({
+  className,
+  sx
+}) => (
+  <span className={className} sx={sx}>
+    <FontAwesomeIcon icon={faMagnifyingGlass} />
+  </span>
+);
 
 interface SearchProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
@@ -89,7 +100,7 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
           height: "initial",
           flex: "1 0 auto"
         }}
-        iconLeft={SvgSearch}
+        iconLeft={SearchIcon}
       >
         Search
       </Button>
