@@ -1,7 +1,7 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
 import * as React from "react";
-import { Box } from "theme-ui";
+import { Box, type ThemeUIStyleObject } from "theme-ui";
 import { Text } from "components/Text";
 import Button from "components/Button";
 import ChevronLeft from "icons/ChevronLeft";
@@ -25,13 +25,97 @@ import {
   createId
 } from "utils/readerAnnotations";
 
-const InputBox = Box as any;
+type InputBoxProps =
+  | ({ as: "input" } & React.InputHTMLAttributes<HTMLInputElement> & { sx?: ThemeUIStyleObject })
+  | ({ as: "textarea" } & React.TextareaHTMLAttributes<HTMLTextAreaElement> & { sx?: ThemeUIStyleObject });
+
+const InputBox = Box as unknown as React.FC<InputBoxProps>;
 
 type EpubReaderProps = {
   url: string;
   authToken?: string;
   title?: string;
   setLoading: (value: boolean) => void;
+};
+
+type EpubSpineItem = {
+  href?: string;
+  cfiBase?: string;
+};
+
+type EpubTocItem = {
+  id?: string;
+  label?: string;
+  title?: string;
+  href?: string;
+  cfi?: string;
+  subitems?: EpubTocItem[];
+  pageNumber?: number;
+  locationIndex?: number;
+};
+
+type EpubSearchResult = {
+  cfi?: string;
+  excerpt?: string;
+  text?: string;
+};
+
+type EpubRelocation = {
+  start?: {
+    cfi?: string;
+    href?: string;
+    displayed?: {
+      page?: number;
+      total?: number;
+    };
+  };
+};
+
+type EpubThemesApi = {
+  select?: (theme: "light" | "dark") => void;
+  register?: (themeName: string, rules: Record<string, unknown>) => void;
+  fontSize?: (size: string) => void;
+  font?: (fontFamily: string) => void;
+};
+
+type EpubRenditionLike = {
+  themes?: EpubThemesApi;
+  views?: () => Array<{ document?: Document }>;
+  on?: (event: "relocated", callback: (location: EpubRelocation) => void) => void;
+  display: (target?: string) => Promise<unknown> | unknown;
+  prev?: () => void;
+  next?: () => void;
+  spread?: (mode: "auto" | "none") => void;
+  destroy?: () => void;
+};
+
+type EpubBookLike = {
+  locations?: {
+    generate?: (chars?: number) => Promise<unknown> | unknown;
+    locationFromCfi?: (cfi: string) => unknown;
+    percentageFromCfi?: (cfi: string) => number | undefined;
+    length?: () => number;
+  };
+  spine?: {
+    spineItems?: EpubSpineItem[];
+  };
+  navigation?: {
+    toc?: EpubTocItem[];
+  };
+  loaded?: {
+    metadata?: Promise<Record<string, unknown>>;
+    navigation?: Promise<{ toc?: EpubTocItem[] }>;
+  };
+  renderTo?: (
+    element: Element,
+    options: {
+      width: string;
+      height: string;
+      flow: string;
+      spread: "auto" | "none";
+    }
+  ) => EpubRenditionLike;
+  destroy?: () => void;
 };
 
 const EpubReader: React.FC<EpubReaderProps> = ({
@@ -41,9 +125,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   setLoading
 }) => {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const bookRef = React.useRef<any>(null);
-  const renditionRef = React.useRef<any>(null);
-  const tocRef = React.useRef<any[]>([]);
+  const bookRef = React.useRef<EpubBookLike | null>(null);
+  const renditionRef = React.useRef<EpubRenditionLike | null>(null);
+  const tocRef = React.useRef<EpubTocItem[]>([]);
 
   const [error, setError] = React.useState<string | null>(null);
   const [progressLabel, setProgressLabel] = React.useState("");
@@ -52,7 +136,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
   const [fontFamily, setFontFamily] = React.useState("publisher");
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
-  const [tocItems, setTocItems] = React.useState<any[]>([]);
+  const [tocItems, setTocItems] = React.useState<EpubTocItem[]>([]);
   const [showToc, setShowToc] = React.useState(false);
   const [tocTab, setTocTab] = React.useState<"toc" | "bookmarks" | "annotations">("toc");
   const [showSearch, setShowSearch] = React.useState(false);
@@ -67,7 +151,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [editingCitationId, setEditingCitationId] = React.useState<string | null>(null);
   const [editingCitationDraft, setEditingCitationDraft] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<any[]>([]);
+  const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
 
   const searchInProgressRef = React.useRef(false);
@@ -85,7 +169,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     const fg = next === "dark" ? "#e2e8f0" : "#0f172a";
 
     try {
-      rendition?.views?.().forEach((view: any) => {
+      rendition?.views?.().forEach((view: { document?: Document }) => {
         if (!view?.document) return;
         view.document.documentElement.style.background = bg;
         view.document.body.style.background = bg;
@@ -133,8 +217,12 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         const { default: ePub } = await import("epubjs");
         if (!active || !containerRef.current) return;
 
-        const book = ePub(buffer);
+        const book = ePub(buffer) as unknown as EpubBookLike;
         bookRef.current = book;
+
+        if (!book.renderTo) {
+          throw new Error("Failed to initialize EPUB renderer.");
+        }
 
         const rendition = book.renderTo(containerRef.current, {
           width: "100%",
@@ -144,21 +232,21 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         });
         renditionRef.current = rendition;
 
-        rendition.themes.register("light", {
+        rendition.themes?.register?.("light", {
           body: { background: "#ffffff", color: "#0f172a" },
           html: { background: "#ffffff", color: "#0f172a" }
         });
-        rendition.themes.register("dark", {
+        rendition.themes?.register?.("dark", {
           body: { background: "#0f172a", color: "#e2e8f0" },
           html: { background: "#0f172a", color: "#e2e8f0" }
         });
 
-        rendition.themes.fontSize(`${fontSize}%`);
-        rendition.themes.font(resolveFontFamily(fontFamily));
+        rendition.themes?.fontSize?.(`${fontSize}%`);
+        rendition.themes?.font?.(resolveFontFamily(fontFamily));
         rendition.spread?.(pageView === "spread" ? "auto" : "none");
         applyTheme(theme);
 
-        rendition.on("relocated", (location: any) => {
+        rendition.on?.("relocated", (location: EpubRelocation) => {
           const cfi = location?.start?.cfi;
           const displayed = location?.start?.displayed;
           const href = location?.start?.href;
@@ -553,7 +641,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       />
 
       {showToc && (
-        <Box sx={panelStyles.right as any}>
+        <Box sx={panelStyles.right}>
           <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
             {(
               [
@@ -576,7 +664,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           {tocTab === "toc" && (
             <Box sx={{ overflowY: "auto", maxHeight: "60vh" }}>
               {tocItems.length ? (
-                tocItems.map((item: any, index: number) => (
+                tocItems.map((item: EpubTocItem, index: number) => (
                   <TocItem
                     key={item?.id || item?.href || `${item?.label || item?.title}-${index}`}
                     item={item}
@@ -781,7 +869,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       )}
 
       {showSearch && (
-        <Box sx={panelStyles.left as any}>
+        <Box sx={panelStyles.left}>
           <Stack spacing={2} sx={{ mb: 2 }}>
             <InputBox
               as="input"
@@ -800,11 +888,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           <Box sx={{ overflowY: "auto", maxHeight: "50vh" }}>
             {searchResults.length ? (
               <Stack direction="column" spacing={2}>
-                {searchResults.map((result: any, index: number) => (
+                {searchResults.map((result: EpubSearchResult, index: number) => (
                   <Box
                     key={`${result?.cfi || "result"}-${index}`}
                     sx={resultCardStyles}
-                    onClick={() => navigateTo(result.cfi)}
+                      onClick={() => {
+                        if (result.cfi) {
+                          navigateTo(result.cfi);
+                        }
+                      }}
                   >
                     <Text variant="text.body.regular" sx={{ fontWeight: 600 }}>
                       {result?.excerpt || result?.text || "Search result"}
@@ -820,7 +912,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       )}
 
       {showDisplay && (
-        <Box ref={displayPanelRef} sx={panelStyles.right as any}>
+        <Box ref={displayPanelRef} sx={panelStyles.right}>
           <Text variant="text.body.regular" sx={{ fontWeight: 600, mb: 2 }}>
             Display
           </Text>
@@ -880,13 +972,13 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           as="button"
           onClick={() => renditionRef.current?.prev?.()}
           aria-label="Previous"
-          sx={edgeButtonStyles.left as any}
+          sx={edgeButtonStyles.left}
         />
         <Box
           as="button"
           onClick={() => renditionRef.current?.next?.()}
           aria-label="Next"
-          sx={edgeButtonStyles.right as any}
+          sx={edgeButtonStyles.right}
         />
 
         <Button
@@ -894,7 +986,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           color="text"
           iconLeft={ChevronLeft}
           onClick={() => renditionRef.current?.prev?.()}
-          sx={floatingNavStyles.left as any}
+          sx={floatingNavStyles.left}
         >
           Prev
         </Button>
@@ -903,7 +995,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           color="text"
           iconLeft={ChevronRight}
           onClick={() => renditionRef.current?.next?.()}
-          sx={floatingNavStyles.right as any}
+          sx={floatingNavStyles.right}
         >
           Next
         </Button>
@@ -948,7 +1040,7 @@ const resolveFontFamily = (choice: string) => {
   }
 };
 
-const normalize = (value: any): string => {
+const normalize = (value: unknown): string => {
   if (value == null) return "";
   if (Array.isArray(value)) {
     return value.map(item => String(item ?? "")).filter(Boolean).join(", ");
@@ -981,7 +1073,10 @@ const pushCandidate = (set: Set<string>, value?: string) => {
   if (trimmed) set.add(trimmed);
 };
 
-const buildDisplayCandidates = (target: string, spineItems: any[] = []) => {
+const buildDisplayCandidates = (
+  target: string,
+  spineItems: EpubSpineItem[] = []
+) => {
   const set = new Set<string>();
   const raw = target.trim();
   const decoded = safeDecode(raw);
@@ -1032,13 +1127,13 @@ const buildDisplayCandidates = (target: string, spineItems: any[] = []) => {
 };
 
 const resolveTocItemPosition = (
-  item: any,
-  book: any
+  item: EpubTocItem,
+  book: EpubBookLike | null | undefined
 ): { pageNumber?: number; locationIndex?: number } => {
   const locations = book?.locations;
   if (!locations?.locationFromCfi) return {};
 
-  const normalizeLoc = (value: any): number | undefined => {
+  const normalizeLoc = (value: unknown): number | undefined => {
     if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
     return Math.max(1, Math.round(value));
   };
@@ -1088,7 +1183,10 @@ const resolveTocItemPosition = (
   return {};
 };
 
-const annotateTocWithLocations = (items: any[] = [], book: any): any[] => {
+const annotateTocWithLocations = (
+  items: EpubTocItem[] = [],
+  book: EpubBookLike | null | undefined
+): EpubTocItem[] => {
   return items.map(item => ({
     ...item,
     ...resolveTocItemPosition(item, book),
@@ -1105,7 +1203,10 @@ const tocHrefMatches = (a: string, b: string) => {
   return aPath === bPath;
 };
 
-const findTocLabel = (items: any[] = [], href: string): string | undefined => {
+const findTocLabel = (
+  items: EpubTocItem[] = [],
+  href: string
+): string | undefined => {
   for (const item of items) {
     if (!item) continue;
     if (item.href && href && item.href.split("#")[0] === href.split("#")[0]) {
@@ -1120,7 +1221,7 @@ const findTocLabel = (items: any[] = [], href: string): string | undefined => {
 };
 
 const TocItem: React.FC<{
-  item: any;
+  item: EpubTocItem;
   depth: number;
   onSelect: (href: string) => void;
   activeHref?: string;
@@ -1218,7 +1319,7 @@ const TocItem: React.FC<{
 
       {hasChildren && expanded && (
         <Box>
-          {subitems.map((child: any, index: number) => (
+          {subitems.map((child: EpubTocItem, index: number) => (
             <TocItem
               key={child?.id || child?.href || `${child?.label || child?.title}-${index}`}
               item={child}
@@ -1233,7 +1334,7 @@ const TocItem: React.FC<{
   );
 };
 
-const panelStyles = {
+const panelStyles: { right: ThemeUIStyleObject; left: ThemeUIStyleObject } = {
   right: {
     position: "absolute",
     top: 64,
@@ -1267,7 +1368,7 @@ const panelStyles = {
   }
 };
 
-const inputStyles = {
+const inputStyles: ThemeUIStyleObject = {
   width: "100%",
   border: "1px solid var(--reader-chrome-border, #e2e8f0)",
   borderRadius: 8,
@@ -1276,7 +1377,7 @@ const inputStyles = {
   background: "transparent"
 };
 
-const resultCardStyles = {
+const resultCardStyles: ThemeUIStyleObject = {
   border: "1px solid",
   borderColor: "var(--reader-chrome-border, #e2e8f0)",
   borderRadius: 8,
@@ -1284,7 +1385,7 @@ const resultCardStyles = {
   cursor: "pointer"
 };
 
-const edgeButtonStyles = {
+const edgeButtonStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject } = {
   left: {
     position: "absolute",
     top: 0,
@@ -1309,7 +1410,7 @@ const edgeButtonStyles = {
   }
 };
 
-const floatingNavStyles = {
+const floatingNavStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject } = {
   left: {
     position: "absolute",
     left: 10,

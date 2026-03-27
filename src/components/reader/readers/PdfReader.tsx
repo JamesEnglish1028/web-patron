@@ -12,15 +12,45 @@ import { getProxiedUrl } from "utils/proxyUrl";
 type PdfJsModule = {
   GlobalWorkerOptions: { workerSrc: string };
   getDocument: (source: { url: string } | { data: Uint8Array }) => {
-    promise: Promise<{
-      numPages: number;
-      getPage: (pageNumber: number) => Promise<any>;
-      getOutline?: () => Promise<any[] | null>;
-      getDestination?: (name: string) => Promise<any[] | null>;
-      getPageIndex?: (ref: any) => Promise<number>;
-      destroy?: () => Promise<void>;
-    }>;
+    promise: Promise<PdfDocument>;
   };
+};
+
+type PdfViewport = {
+  width: number;
+  height: number;
+};
+
+type PdfRenderTask = {
+  promise: Promise<void>;
+  cancel?: () => void;
+};
+
+type PdfPage = {
+  getViewport: (args: { scale: number }) => PdfViewport;
+  render: (args: {
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfViewport;
+  }) => PdfRenderTask;
+};
+
+type PdfDestinationRef = unknown;
+
+type PdfExplicitDestination = [PdfDestinationRef, ...unknown[]];
+
+type PdfOutlineNode = {
+  title?: string;
+  dest?: string | PdfExplicitDestination | null;
+  items?: PdfOutlineNode[];
+};
+
+type PdfDocument = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPage>;
+  getOutline?: () => Promise<PdfOutlineNode[] | null>;
+  getDestination?: (name: string) => Promise<PdfExplicitDestination | null>;
+  getPageIndex?: (ref: PdfDestinationRef) => Promise<number>;
+  destroy?: () => Promise<void>;
 };
 
 type PdfTocItem = {
@@ -59,8 +89,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const primaryCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const secondaryCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const pdfRef = React.useRef<any>(null);
-  const renderTasksRef = React.useRef<any[]>([]);
+  const pdfRef = React.useRef<PdfDocument | null>(null);
+  const renderTasksRef = React.useRef<PdfRenderTask[]>([]);
 
   const [error, setError] = React.useState<string | null>(null);
   const [pdfData, setPdfData] = React.useState<Uint8Array | null>(null);
@@ -225,14 +255,12 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         setNumPages(pdf.numPages || 0);
         setPageNumber(1);
 
-        const resolveDestToPage = async (
-          dest: unknown
-        ): Promise<number | undefined> => {
+          const resolveDestToPage = async (dest: unknown) => {
           if (!pdf.getPageIndex) return undefined;
 
-          let explicitDest: any[] | null = null;
+            let explicitDest: PdfExplicitDestination | null = null;
           if (Array.isArray(dest)) {
-            explicitDest = dest as any[];
+              explicitDest = dest as PdfExplicitDestination;
           } else if (typeof dest === "string" && pdf.getDestination) {
             explicitDest = await pdf.getDestination(dest);
           }
@@ -249,9 +277,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           }
         };
 
-        const normalizeOutline = async (
-          items: any[] | null
-        ): Promise<PdfTocItem[]> => {
+          const normalizeOutline = async (
+            items: PdfOutlineNode[] | null
+          ): Promise<PdfTocItem[]> => {
           if (!items?.length) return [];
 
           const normalized = await Promise.all(
@@ -351,7 +379,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             ? Math.max(220, (containerWidth - 96) / 2)
             : Math.max(220, containerWidth - 48);
 
-        const tasks: any[] = [];
+          const tasks: PdfRenderTask[] = [];
 
         for (let i = 0; i < canvases.length; i += 1) {
           const canvas = canvases[i];
