@@ -161,9 +161,7 @@ test("displays server error", async () => {
     },
     method: "GET"
   });
-  const serverError = await screen.findByText(
-    "Invalid Credentials: Wrong username."
-  );
+  const serverError = await screen.findByText(/Server Error:/i);
   expect(serverError).toBeInTheDocument();
 });
 

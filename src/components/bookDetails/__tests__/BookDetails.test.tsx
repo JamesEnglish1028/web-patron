@@ -19,6 +19,7 @@ function makeSwrResponse(value: Partial<ReturnType<typeof useSWR>>) {
     data: undefined,
     error: undefined,
     revalidate: jest.fn(),
+    isLoading: false,
     isValidating: false,
     mutate: jest.fn(),
     ...value
@@ -54,7 +55,7 @@ describe("book details page", () => {
         setup(<BookDetails />, {
           router: { query: { bookUrl: "/book-url" } }
         })
-      ).toThrowError(ServerError);
+      ).toThrow(ServerError);
     }
   });
 

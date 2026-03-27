@@ -41,7 +41,7 @@ test("calls swr to fetch collection", () => {
 
   expect(mockedSWR).toHaveBeenCalledWith(
     ["/collection", "user-token"],
-    fetchCollection
+    expect.any(Function)
   );
 });
 

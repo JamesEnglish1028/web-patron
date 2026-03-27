@@ -22,6 +22,7 @@ import * as fetch from "dataflow/opds1/fetch";
 import { ServerError } from "errors";
 import { MOCK_DATE_STRING } from "test-utils/mockToDateString";
 import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
+import { mockPush } from "test-utils/mockNextRouter";
 
 jest.mock("downloadjs");
 window.open = jest.fn();
@@ -543,10 +544,7 @@ describe("FulfillableBook", () => {
     setup(<FulfillmentCard book={bookWithRedirect} />);
     expect(screen.queryByText("Ready to Read!")).not.toBeInTheDocument();
     expect(screen.getByText("Ready to Read in Palace!")).toBeInTheDocument();
-    expect(
-      screen.getByText("If you would rather read on your computer, you can:")
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download EPUB" }));
+    expect(screen.getByRole("button", { name: "Read" })).toBeInTheDocument();
   });
 
   test("correct title and subtitle when COMPANION_APP is set to openebooks", () => {
@@ -566,36 +564,18 @@ describe("FulfillableBook", () => {
     expect(screen.getByText("Ready to Read!")).toBeInTheDocument();
   });
 
-  test("shows download options", async () => {
+  test("shows read options", async () => {
     setup(<FulfillmentCard book={downloadableBook} />);
-    const downloadButton = await screen.findByText("Download EPUB");
-    expect(downloadButton).toBeInTheDocument();
-
-    const PDFButton = await screen.findByText("Download PDF");
-    expect(PDFButton).toBeInTheDocument();
+    const readButtons = await screen.findAllByText("Read");
+    expect(readButtons.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("download button shows loading indicator fetches book", async () => {
+  test("read button navigates to internal reader", async () => {
     setup(<FulfillmentCard book={downloadableBook} />);
-    const downloadButton = screen.getByText("Download EPUB");
-    expect(downloadButton).toBeInTheDocument();
-
-    fireEvent.click(downloadButton);
-
-    // expect(
-    //   screen.getByRole("button", { name: /downloading\.\.\./i })
-    // ).toBeInTheDocument();
-    expect(downloadButton).toHaveTextContent(/downloading\.\.\./i);
-
-    await waitForElementToBeRemoved(() => screen.queryByText("Downloading..."));
-    // expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
-
-    expect(fetchMock).toHaveBeenCalledWith("/epub-link", {
-      headers: {
-        Authorization: "user-token",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      method: "GET"
+    const readButton = screen.getAllByText("Read")[0];
+    fireEvent.click(readButton);
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalled();
     });
   });
 
@@ -635,48 +615,5 @@ describe("FulfillableBook", () => {
     await screen.findByText(/error:/i);
   });
 
-  test("shows download error message", async () => {
-    const problem: ProblemDocument = {
-      detail: "You can't do that",
-      title: "Wrong!",
-      status: 418
-    };
-    fetchMock.once(JSON.stringify(problem), { status: 418 });
-    setup(<FulfillmentCard book={downloadableBook} />);
-    const downloadButton = await screen.findByText("Download EPUB");
-
-    fireEvent.click(downloadButton);
-
-    expect(
-      await screen.findByText("Error: You can't do that")
-    ).toBeInTheDocument();
-  });
-
-  test("reattempts downloads without headers upon redirect failure", async () => {
-    // redirect the user
-    fetchMock.once("Bad headers dude!", {
-      status: 301,
-      // this is a little known feature to mock a redirected response
-      counter: 1,
-      url: "/new-location"
-    } as any);
-    setup(<FulfillmentCard book={downloadableBook} />);
-    const downloadButton = await screen.findByText("Download EPUB");
-
-    fireEvent.click(downloadButton);
-
-    await waitForElementToBeRemoved(() => screen.queryByText("Downloading..."));
-    expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
-
-    expect(fetchMock).toHaveBeenCalledWith("/epub-link", {
-      headers: {
-        Authorization: "user-token",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      method: "GET"
-    });
-
-    // we try the rejected url without headers
-    expect(fetchMock).toHaveBeenCalledWith("/new-location");
-  });
+  // Download-specific error tests removed because EPUB/PDF are now read internally.
 });

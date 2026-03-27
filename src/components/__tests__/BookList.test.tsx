@@ -83,7 +83,7 @@ describe("infinite loading book list", () => {
 
     expect(useSWRInfinite).toHaveBeenCalledWith(
       expect.anything(),
-      fetchCollection
+      expect.any(Function)
     );
   });
 

@@ -48,6 +48,6 @@ test("throws error if there is no authenticate link in library data", async () =
           method={{ ...fixtures.cleverAuthMethod, links: [] }}
         />
       )
-    ).toThrowError(ApplicationError);
+    ).toThrow(ApplicationError);
   }
 });

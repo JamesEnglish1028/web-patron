@@ -15,6 +15,7 @@ function makeSwrResponse(
     data: undefined,
     error: undefined,
     // revalidate: jest.fn(),
+    isLoading: false,
     isValidating: false,
     mutate: jest.fn(),
     ...value
