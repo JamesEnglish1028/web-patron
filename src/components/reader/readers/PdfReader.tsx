@@ -3,8 +3,10 @@ import { Box } from "theme-ui";
 import Button, { AnchorButton } from "components/Button";
 import Stack from "components/Stack";
 import { Text } from "components/Text";
+import Trash from "icons/Trash";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
+import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
 
 type PdfJsModule = {
@@ -75,17 +77,23 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const [bookmarks, setBookmarks] = React.useState<PdfBookmarkItem[]>([]);
   const [annotations, setAnnotations] = React.useState<PdfAnnotationItem[]>([]);
   const [annotationDraft, setAnnotationDraft] = React.useState("");
+  const [editingAnnotationId, setEditingAnnotationId] = React.useState<string | null>(null);
+  const [editingAnnotationDraft, setEditingAnnotationDraft] = React.useState("");
 
   const [tocActive, setTocActive] = React.useState(false);
   const [searchActive, setSearchActive] = React.useState(false);
   const [displayActive, setDisplayActive] = React.useState(false);
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
 
+  const readerInfo = useReaderInfo();
+
   const closePanels = () => {
     setTocActive(false);
     setSearchActive(false);
     setDisplayActive(false);
   };
+
+  const leftControls = readerInfo?.backControl;
 
   const openTocPanel = () => {
     setTocActive(prev => !prev);
@@ -172,6 +180,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       setAnnotations([]);
     }
     setAnnotationDraft("");
+    setEditingAnnotationId(null);
+    setEditingAnnotationDraft("");
   }, [url]);
 
   React.useEffect(() => {
@@ -416,6 +426,51 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
   const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+  const addBookmark = () => {
+    if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
+    setBookmarks(prev => [
+      ...prev,
+      { id: createId(), pageNumber, createdAt: Date.now() }
+    ]);
+    setTocActive(true);
+    setTocTab("bookmarks");
+  };
+
+  const beginAnnotationEdit = (annotation: PdfAnnotationItem) => {
+    setEditingAnnotationId(annotation.id);
+    setEditingAnnotationDraft(annotation.note);
+  };
+
+  const cancelAnnotationEdit = () => {
+    setEditingAnnotationId(null);
+    setEditingAnnotationDraft("");
+  };
+
+  const saveAnnotationEdit = () => {
+    const note = editingAnnotationDraft.trim();
+    if (!editingAnnotationId || !note) return;
+    setAnnotations(prev =>
+      prev.map(annotation =>
+        annotation.id === editingAnnotationId
+          ? {
+              ...annotation,
+              note
+            }
+          : annotation
+      )
+    );
+    setEditingAnnotationId(null);
+    setEditingAnnotationDraft("");
+  };
+
+  const removeAnnotation = (id: string) => {
+    setAnnotations(prev => prev.filter(entry => entry.id !== id));
+    if (editingAnnotationId === id) {
+      setEditingAnnotationId(null);
+      setEditingAnnotationDraft("");
+    }
+  };
+
   const nativeViewerSrc = pdfUrl
     ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH`
     : null;
@@ -448,6 +503,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           canAdjust={false}
           hideNavControls
           hideAdjustControls
+          leftControls={leftControls}
           extraControls={
             <ReaderUtilityControls
               onToggleToc={() => setTocActive(prev => !prev)}
@@ -629,12 +685,13 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         canNext={numPages ? pageNumber < numPages : true}
         hideNavControls
         hideAdjustControls
+        leftControls={leftControls}
         extraControls={
           <ReaderUtilityControls
             onToggleToc={openTocPanel}
             onToggleSearch={openSearchPanel}
             onToggleTheme={openDisplayPanel}
-            disableBookmark
+            onAddBookmark={addBookmark}
             tocActive={tocActive}
             searchActive={searchActive}
             displayActive={displayActive}
@@ -710,21 +767,20 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
               {tocTab === "bookmarks" && (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <Button
-                    variant="ghost"
-                    color="text"
-                    onClick={() => {
-                      if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
-                      setBookmarks(prev => [
-                        ...prev,
-                        { id: createId(), pageNumber, createdAt: Date.now() }
-                      ]);
-                    }}
-                  >
+                  <Button variant="ghost" color="text" onClick={addBookmark}>
                     Bookmark current page
                   </Button>
                   {bookmarks.length > 0 ? (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                        overflowY: "auto",
+                        maxHeight: "52vh",
+                        pr: 1
+                      }}
+                    >
                       {bookmarks
                         .slice()
                         .sort((a, b) => a.pageNumber - b.pageNumber)
@@ -735,12 +791,17 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "space-between",
-                              gap: 2
+                              gap: 2,
+                              border: "1px solid",
+                              borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                              borderRadius: 8,
+                              p: 2
                             }}
                           >
                             <Button
                               variant="ghost"
                               color="text"
+                              sx={{ justifyContent: "flex-start", px: 0, py: 0, minHeight: "unset" }}
                               onClick={() => {
                                 const alignedPage =
                                   pageView === "spread" && bookmark.pageNumber % 2 === 0
@@ -755,6 +816,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                             <Button
                               variant="ghost"
                               color="text"
+                              iconLeft={Trash}
                               onClick={() =>
                                 setBookmarks(prev =>
                                   prev.filter(entry => entry.id !== bookmark.id)
@@ -852,19 +914,61 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                               >
                                 Page {annotation.pageNumber}
                               </Button>
-                              <Button
-                                variant="ghost"
-                                color="text"
-                                onClick={() =>
-                                  setAnnotations(prev =>
-                                    prev.filter(entry => entry.id !== annotation.id)
-                                  )
-                                }
-                              >
-                                Remove
-                              </Button>
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                <Button
+                                  variant="ghost"
+                                  color="text"
+                                  onClick={() => beginAnnotationEdit(annotation)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  color="text"
+                                  onClick={() => removeAnnotation(annotation.id)}
+                                >
+                                  Remove
+                                </Button>
+                              </Box>
                             </Box>
-                            <Text variant="text.detail">{annotation.note}</Text>
+                            {editingAnnotationId === annotation.id ? (
+                              <>
+                                <textarea
+                                  className="pdf-annotation-input"
+                                  value={editingAnnotationDraft}
+                                  onChange={event =>
+                                    setEditingAnnotationDraft(event.target.value)
+                                  }
+                                  placeholder="Edit note"
+                                />
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 2,
+                                    mt: 2
+                                  }}
+                                >
+                                  <Button
+                                    variant="ghost"
+                                    color="text"
+                                    onClick={saveAnnotationEdit}
+                                    disabled={!editingAnnotationDraft.trim()}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    color="text"
+                                    onClick={cancelAnnotationEdit}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </Box>
+                              </>
+                            ) : (
+                              <Text variant="text.detail">{annotation.note}</Text>
+                            )}
                           </Box>
                         ))}
                     </Box>

@@ -64,6 +64,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [bookmarks, setBookmarks] = React.useState<ReaderBookmark[]>([]);
   const [citations, setCitations] = React.useState<ReaderCitation[]>([]);
   const [citationDraft, setCitationDraft] = React.useState("");
+  const [editingCitationId, setEditingCitationId] = React.useState<string | null>(null);
+  const [editingCitationDraft, setEditingCitationDraft] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -176,6 +178,28 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             if (label) setCurrentChapter(label);
           }
 
+          try {
+            const locations = bookRef.current?.locations;
+            if (locations?.locationFromCfi && locations?.length && cfi) {
+              const loc = locations.locationFromCfi(cfi);
+              const total = locations.length();
+              if (
+                typeof loc === "number" &&
+                Number.isFinite(loc) &&
+                typeof total === "number" &&
+                Number.isFinite(total) &&
+                total > 0
+              ) {
+                const page = Math.max(1, Math.round(loc) + 1);
+                setCurrentPageLabel(`Page ${page}`);
+                setProgressLabel(`Page ${page} of ${Math.round(total)}`);
+                return;
+              }
+            }
+          } catch {
+            // ignore location conversion errors
+          }
+
           if (displayed?.page && displayed?.total) {
             setCurrentPageLabel(`Page ${displayed.page}`);
             setProgressLabel(`Page ${displayed.page} of ${displayed.total}`);
@@ -282,6 +306,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setShowDisplay(false);
     setTocTab("toc");
     setCitationDraft("");
+    setEditingCitationId(null);
+    setEditingCitationDraft("");
     try {
       setBookmarks(loadBookmarks(url));
       setCitations(loadCitations(url));
@@ -413,6 +439,37 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     const next = citations.filter(entry => entry.id !== id);
     setCitations(next);
     saveCitations(url, next);
+    if (editingCitationId === id) {
+      setEditingCitationId(null);
+      setEditingCitationDraft("");
+    }
+  };
+
+  const beginCitationEdit = (citation: ReaderCitation) => {
+    setEditingCitationId(citation.id);
+    setEditingCitationDraft(citation.note);
+  };
+
+  const cancelCitationEdit = () => {
+    setEditingCitationId(null);
+    setEditingCitationDraft("");
+  };
+
+  const saveCitationEdit = () => {
+    const note = editingCitationDraft.trim();
+    if (!editingCitationId || !note) return;
+    const next = citations.map(entry =>
+      entry.id === editingCitationId
+        ? {
+            ...entry,
+            note
+          }
+        : entry
+    );
+    setCitations(next);
+    saveCitations(url, next);
+    setEditingCitationId(null);
+    setEditingCitationDraft("");
   };
 
   const copyCitation = async (citation: ReaderCitation) => {
@@ -540,7 +597,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 Bookmark current location
               </Button>
               {sortedBookmarks.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", maxHeight: "52vh", pr: 1 }}>
                   {sortedBookmarks.map(bookmark => (
                     <Box
                       key={bookmark.id}
@@ -555,7 +612,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                         p: 2
                       }}
                     >
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                         <Button
                           variant="ghost"
                           color="text"
@@ -564,12 +621,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                         >
                           {bookmark.chapter || bookmark.pageLabel || bookmark.label || "Bookmark"}
                         </Button>
-                        {(bookmark.pageLabel || typeof bookmark.progressPercent === "number") && (
-                          <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                            {bookmark.pageLabel || "Location"}
-                            {typeof bookmark.progressPercent === "number"
-                              ? ` • ${bookmark.progressPercent}%`
-                              : ""}
+                        {typeof bookmark.progressPercent === "number" && (
+                          <Text variant="text.detail" sx={{ color: "ui.gray.dark", m: 0 }}>
+                            Progression {bookmark.progressPercent}%
                           </Text>
                         )}
                       </Box>
@@ -645,31 +699,76 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                         >
                           {citation.chapter || citation.pageLabel || "Annotation"}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          color="text"
-                          iconLeft={Trash}
-                          onClick={() => removeCitation(citation.id)}
-                        >
-                          Remove
-                        </Button>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Button
+                            variant="ghost"
+                            color="text"
+                            onClick={() => beginCitationEdit(citation)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            color="text"
+                            iconLeft={Trash}
+                            onClick={() => removeCitation(citation.id)}
+                          >
+                            Remove
+                          </Button>
+                        </Box>
                       </Box>
-                      <Text variant="text.detail" sx={{ mb: 2 }}>
-                        {citation.note}
-                      </Text>
-                      {citation.pageLabel && (
-                        <Text variant="text.detail" sx={{ color: "ui.gray.dark", mb: 2 }}>
-                          {citation.pageLabel}
-                        </Text>
+                      {editingCitationId === citation.id ? (
+                        <>
+                          <InputBox
+                            as="textarea"
+                            value={editingCitationDraft}
+                            onChange={e => setEditingCitationDraft(e.target.value)}
+                            sx={{
+                              width: "100%",
+                              minHeight: 84,
+                              border: "1px solid",
+                              borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                              borderRadius: 8,
+                              p: 2,
+                              mb: 2,
+                              background: "transparent",
+                              color: "var(--reader-chrome-text, inherit)"
+                            }}
+                          />
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                            <Button
+                              variant="ghost"
+                              color="text"
+                              onClick={saveCitationEdit}
+                              disabled={!editingCitationDraft.trim()}
+                            >
+                              Save
+                            </Button>
+                            <Button variant="ghost" color="text" onClick={cancelCitationEdit}>
+                              Cancel
+                            </Button>
+                          </Box>
+                        </>
+                      ) : (
+                        <>
+                          <Text variant="text.detail" sx={{ mb: 2 }}>
+                            {citation.note}
+                          </Text>
+                          {citation.pageLabel && (
+                            <Text variant="text.detail" sx={{ color: "ui.gray.dark", mb: 2 }}>
+                              {citation.pageLabel}
+                            </Text>
+                          )}
+                          <Button
+                            variant="ghost"
+                            color="text"
+                            iconLeft={Copy}
+                            onClick={() => copyCitation(citation)}
+                          >
+                            Copy
+                          </Button>
+                        </>
                       )}
-                      <Button
-                        variant="ghost"
-                        color="text"
-                        iconLeft={Copy}
-                        onClick={() => copyCitation(citation)}
-                      >
-                        Copy
-                      </Button>
                     </Box>
                   ))}
                 </Box>
@@ -814,7 +913,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         sx={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "center",
           px: 3,
           py: 2,
           borderTop: "1px solid",
@@ -823,9 +922,12 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           color: "var(--reader-chrome-text, inherit)"
         }}
       >
-        <Text variant="text.detail">{currentChapter || " "}</Text>
-        <Text variant="text.detail">{progressLabel || " "}</Text>
-        <Text variant="text.detail">{currentCfi ? "EPUB" : " "}</Text>
+        <Text
+          variant="text.detail"
+          sx={{ color: "ui.gray.dark", textAlign: "center", width: "100%" }}
+        >
+          {progressLabel || " "}
+        </Text>
       </Box>
     </Box>
   );
