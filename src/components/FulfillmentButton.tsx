@@ -5,10 +5,11 @@ import {
   ReadExternalFulfillment,
   ReadInternalFulfillment
 } from "utils/fulfill";
-import { FulfillableBook } from "interfaces";
+import { FulfillableBook, OPDS1 } from "interfaces";
 import track from "analytics/track";
 import SvgDownload from "icons/Download";
 import SvgExternalLink from "icons/ExternalOpen";
+import SvgBook from "icons/Book";
 import { useRouter } from "next/router";
 import { Text } from "components/Text";
 import Button from "components/Button";
@@ -18,6 +19,7 @@ import downloadFile from "dataflow/download";
 import useError from "hooks/useError";
 import useLinkUtils from "hooks/useLinkUtils";
 import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
+import { storeReaderAuth } from "utils/readerAuth";
 import Stack from "./Stack";
 
 const FulfillmentButton: React.FC<{
@@ -56,6 +58,29 @@ const FulfillmentButton: React.FC<{
 };
 
 export default FulfillmentButton;
+
+function getFormatLabel(contentType?: string): string {
+  switch (contentType) {
+    case OPDS1.EpubMediaType:
+    case OPDS1.KepubMediaType:
+      return "EPUB";
+    case OPDS1.PdfMediaType:
+      return "PDF";
+    default:
+      return "";
+  }
+}
+
+function getFormatIcon(contentType?: string) {
+  switch (contentType) {
+    case OPDS1.EpubMediaType:
+    case OPDS1.KepubMediaType:
+    case OPDS1.PdfMediaType:
+      return SvgBook;
+    default:
+      return undefined;
+  }
+}
 
 function getButtonStyles(isPrimaryAction: boolean) {
   return isPrimaryAction
@@ -120,16 +145,22 @@ const ReadOnlineExternal: React.FC<{
     }
   }
 
+  const formatLabel = getFormatLabel(details?.contentType);
+  const formatIcon = getFormatIcon(details?.contentType);
+  const buttonText = formatLabel
+    ? `Read ${formatLabel}`
+    : (details?.buttonLabel ?? "Read");
+
   return (
     <Stack sx={{ flexWrap: "wrap" }}>
       <Button
         {...getButtonStyles(isPrimaryAction)}
-        iconLeft={SvgExternalLink}
+        iconLeft={formatIcon || SvgExternalLink}
         onClick={open}
         loading={loading}
         loadingText="Opening..."
       >
-        {details?.buttonLabel ?? "Read"}
+        {buttonText}
       </Button>
       {error && <Text sx={{ color: "ui.error" }}>{error}</Text>}
     </Stack>
@@ -143,16 +174,62 @@ const ReadOnlineInternal: React.FC<{
 }> = ({ details, isPrimaryAction, trackOpenBookUrl }) => {
   const router = useRouter();
   const { buildReaderLink } = useLinkUtils();
+  const { catalogUrl } = useLibraryContext();
+  const { token } = useUser();
+  const [loading, setLoading] = React.useState(false);
+  const { error, handleError, clearError } = useError();
 
-  const internalLink = buildReaderLink("internal", details.url);
-  function open() {
-    track.openBook(trackOpenBookUrl);
-    router.push(internalLink, undefined, { shallow: true });
+  async function open() {
+    setLoading(true);
+    clearError();
+    try {
+      const resolved = details.getLocation
+        ? await details.getLocation(catalogUrl, token)
+        : { url: details.url, token: undefined };
+      const authKey = resolved.token
+        ? storeReaderAuth({ url: resolved.url, token: resolved.token })
+        : null;
+      const internalLink = buildReaderLink("internal", resolved.url);
+      const query = [
+        details.contentType
+          ? `ct=${encodeURIComponent(details.contentType)}`
+          : null,
+        authKey ? `authKey=${encodeURIComponent(authKey)}` : null
+      ]
+        .filter(Boolean)
+        .join("&");
+      track.openBook(trackOpenBookUrl);
+      setLoading(false);
+      router.push(
+        query ? `${internalLink}?${query}` : internalLink,
+        undefined,
+        { shallow: true }
+      );
+    } catch (e) {
+      setLoading(false);
+      handleError(e);
+    }
   }
+
+  const formatLabel = getFormatLabel(details?.contentType);
+  const formatIcon = getFormatIcon(details?.contentType);
+  const buttonText = formatLabel
+    ? `Read ${formatLabel}`
+    : (details?.buttonLabel ?? "Read");
+
   return (
-    <Button {...getButtonStyles(isPrimaryAction)} onClick={open}>
-      {details?.buttonLabel ?? "Read"}
-    </Button>
+    <Stack sx={{ flexWrap: "wrap" }}>
+      <Button
+        {...getButtonStyles(isPrimaryAction)}
+        onClick={open}
+        loading={loading}
+        loadingText="Opening..."
+        iconLeft={formatIcon}
+      >
+        {buttonText}
+      </Button>
+      {error && <Text sx={{ color: "ui.error" }}>{error}</Text>}
+    </Stack>
   );
 };
 
