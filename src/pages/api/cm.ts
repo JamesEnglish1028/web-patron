@@ -79,20 +79,24 @@ export default async function handler(
     return;
   }
 
-  let requestBody: Buffer | undefined;
+  let requestBody: Uint8Array | undefined;
   if (req.method === "POST" || req.method === "PUT") {
     const chunks: Buffer[] = [];
     for await (const chunk of req) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
-    requestBody = Buffer.concat(chunks);
+    requestBody = new Uint8Array(Buffer.concat(chunks));
   }
+
+  const bodyInit = requestBody
+    ? (requestBody as unknown as BodyInit)
+    : undefined;
 
   try {
     const upstream = await fetch(target.toString(), {
       method: req.method,
       headers: buildForwardHeaders(req),
-      body: requestBody
+      body: bodyInit
     });
 
     if (!upstream.ok) {
