@@ -11,9 +11,9 @@ import useUser from "components/context/UserContext";
 import useLogin from "auth/useLogin";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBook } from "@fortawesome/free-solid-svg-icons";
-import { SxProp } from "theme-ui";
+import type { ThemeUIStyleObject } from "theme-ui";
 
-const MyBooksIcon: React.FC<{ className?: string; sx?: SxProp }> = ({
+const MyBooksIcon: React.FC<{ className?: string; sx?: ThemeUIStyleObject }> = ({
   className,
   sx
 }) => (

@@ -10,9 +10,9 @@ import ApplicationError from "errors";
 import { SearchData } from "interfaces";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
-import { SxProp } from "theme-ui";
+import type { ThemeUIStyleObject } from "theme-ui";
 
-const SearchIcon: React.FC<{ className?: string; sx?: SxProp }> = ({
+const SearchIcon: React.FC<{ className?: string; sx?: ThemeUIStyleObject }> = ({
   className,
   sx
 }) => (

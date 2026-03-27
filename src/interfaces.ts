@@ -155,6 +155,8 @@ export type FulfillmentLink = {
   url: string;
   indirectionType?: OPDS1.IndirectAcquisitionType;
   supportLevel: MediaSupportLevel;
+  rel?: string | string[];
+  templated?: boolean;
 };
 
 export type AudioBookMedium = "http://bib.schema.org/Audiobook";
