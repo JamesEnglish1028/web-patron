@@ -40,6 +40,7 @@ describe("fulfill", () => {
 
         expect(fetchMock).toHaveBeenCalledWith("link-url", {
           headers: {
+            Accept: "application/vnd.librarysimplified.bearer-token+json",
             "X-Requested-With": "XMLHttpRequest",
             Authorization: "token"
           },

@@ -10,11 +10,7 @@ const isHttpUrl = (value: string) => {
   }
 };
 
-const copyHeader = (
-  source: Headers,
-  target: NextApiResponse,
-  name: string
-) => {
+const copyHeader = (source: Headers, target: NextApiResponse, name: string) => {
   const value = source.get(name);
   if (value) target.setHeader(name, value);
 };
@@ -95,11 +91,12 @@ export default async function handler(
   }
 
   try {
+    const requestBody = body as unknown as BodyInit | undefined;
     const upstream = await fetch(urlParam, {
       method: req.method,
       headers,
       redirect: "follow",
-      body
+      body: requestBody
     });
 
     res.statusCode = upstream.status;
@@ -151,7 +148,9 @@ export default async function handler(
     bodyStream.pipe(res);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to fetch upstream resource.";
+      error instanceof Error
+        ? error.message
+        : "Failed to fetch upstream resource.";
     console.error("[api/fulfill] upstream fetch error", {
       method: req.method,
       url: urlParam,

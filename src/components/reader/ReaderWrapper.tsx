@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import { Dialog, DialogDismiss } from "@ariakit/react";
 import Button from "components/Button";
 import LoadingIndicator from "components/LoadingIndicator";
-import { Box, Container } from "theme-ui";
+import { Box, Container, type ThemeUIStyleObject } from "theme-ui";
 import ChevronLeft from "icons/ChevronLeft";
 import { Text } from "components/Text";
 import Stack from "components/Stack";
@@ -37,6 +37,13 @@ type ReaderInfoContextValue = {
   infoButtonRef: React.RefObject<HTMLButtonElement | null>;
   backControl: React.ReactNode;
 };
+
+type ImageElementProps = {
+  as: "img";
+  sx?: ThemeUIStyleObject;
+} & React.ImgHTMLAttributes<HTMLImageElement>;
+
+const ImageElement = Box as unknown as React.FC<ImageElementProps>;
 
 const ReaderInfoContext = React.createContext<ReaderInfoContextValue | null>(
   null
@@ -84,11 +91,26 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
       [
         { label: "Accessibility", value: bookInfo?.accessibility },
         { label: "Access mode", value: bookInfo?.accessMode },
-        { label: "Access mode sufficient", value: bookInfo?.accessModeSufficient },
-        { label: "Accessibility features", value: bookInfo?.accessibilityFeature },
-        { label: "Accessibility hazards", value: bookInfo?.accessibilityHazard },
-        { label: "Accessibility certification", value: bookInfo?.accessibilityCertification },
-        { label: "Accessibility conforms to", value: bookInfo?.accessibilityConformsTo }
+        {
+          label: "Access mode sufficient",
+          value: bookInfo?.accessModeSufficient
+        },
+        {
+          label: "Accessibility features",
+          value: bookInfo?.accessibilityFeature
+        },
+        {
+          label: "Accessibility hazards",
+          value: bookInfo?.accessibilityHazard
+        },
+        {
+          label: "Accessibility certification",
+          value: bookInfo?.accessibilityCertification
+        },
+        {
+          label: "Accessibility conforms to",
+          value: bookInfo?.accessibilityConformsTo
+        }
       ].filter(item => item.value),
     [bookInfo]
   );
@@ -138,7 +160,14 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
       }}
     >
       <ReaderInfoContext.Provider
-        value={{ bookInfo, setBookInfo, showInfo, toggleInfo, infoButtonRef, backControl }}
+        value={{
+          bookInfo,
+          setBookInfo,
+          showInfo,
+          toggleInfo,
+          infoButtonRef,
+          backControl
+        }}
       >
         {showInfo && (
           <Box
@@ -173,7 +202,7 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
                 }}
               >
                 {bookInfo?.coverUrl && (
-                  <Box
+                  <ImageElement
                     as="img"
                     src={bookInfo.coverUrl}
                     alt={bookInfo.title || "Book cover"}
@@ -186,7 +215,10 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
                     }}
                   />
                 )}
-                <Text variant="text.headers.primary" sx={{ fontSize: "1.25rem" }}>
+                <Text
+                  variant="text.headers.primary"
+                  sx={{ fontSize: "1.25rem" }}
+                >
                   {bookInfo?.title || "Book details"}
                 </Text>
                 {bookInfo?.author && (
@@ -320,23 +352,23 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
           </Box>
         )}
         <Box sx={{ position: "relative", flex: 1, minHeight: 0 }}>
-        {loading && (
-          <Container
-            sx={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              pointerEvents: "none",
-              background: "rgba(255,255,255,0.6)",
-              zIndex: 3
-            }}
-          >
-            <LoadingIndicator />
-          </Container>
-        )}
-        {children({ loading, setLoading })}
+          {loading && (
+            <Container
+              sx={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                pointerEvents: "none",
+                background: "rgba(255,255,255,0.6)",
+                zIndex: 3
+              }}
+            >
+              <LoadingIndicator />
+            </Container>
+          )}
+          {children({ loading, setLoading })}
         </Box>
       </ReaderInfoContext.Provider>
     </Dialog>

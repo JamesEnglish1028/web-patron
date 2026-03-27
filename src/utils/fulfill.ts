@@ -108,7 +108,7 @@ export const getFulfillmentFromLink =
       return { type: "unsupported" };
     }
 
-    switch (contentType) {
+    switch (String(contentType)) {
       case OPDS1.PdfMediaType:
       case OPDS1.EpubMediaType: {
         const normalizedIndirection = String(indirectionType || "");
@@ -139,7 +139,7 @@ export const getFulfillmentFromLink =
           ),
           type: "download",
           buttonLabel: `Download Adobe ${typeName}`,
-          contentType
+          contentType: contentType as DownloadMediaType
         };
       }
       case OPDS1.AudiobookMediaType:
@@ -170,7 +170,7 @@ export const getFulfillmentFromLink =
           ),
           type: "download",
           buttonLabel: `Download ${typeName}`,
-          contentType
+          contentType: contentType as DownloadMediaType
         };
       }
 
@@ -184,7 +184,7 @@ export const getFulfillmentFromLink =
             contentType,
             link.url
           ),
-          contentType,
+          contentType: contentType as ReadOnlineMediaType,
           buttonLabel: `${action} Online`
         };
 

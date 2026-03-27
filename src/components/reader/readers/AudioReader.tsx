@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Box } from "theme-ui";
+import { Box, type ThemeUIStyleObject } from "theme-ui";
 import { Text, H2 } from "components/Text";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
@@ -19,6 +19,14 @@ type AudioBookmark = {
   trackTitle: string;
   createdAt: number;
 };
+
+type AudioElementProps = {
+  as: "audio";
+  sx?: ThemeUIStyleObject;
+  ref?: React.Ref<HTMLAudioElement>;
+} & React.AudioHTMLAttributes<HTMLAudioElement>;
+
+const AudioElement = Box as unknown as React.FC<AudioElementProps>;
 
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -745,7 +753,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
         <Text sx={{ mt: 3 }}>
           Playing: {currentTrack.title || `Track ${trackIndex + 1}`}
         </Text>
-        <Box
+        <AudioElement
           as="audio"
           controls
           src={trackUrl}

@@ -298,12 +298,16 @@ describe("FulfillableBook", () => {
       }
     });
     setup(<BookListItem book={book} />);
-    expect(screen.getByRole("button", { name: "Read" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Read\s+/i })
+    ).toBeInTheDocument();
   });
 
   test("doesn't show FulfillmentButton if multiple options", () => {
     setup(<BookListItem book={downloadableBook} />);
-    expect(screen.queryByText("Read")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Read$/i })
+    ).not.toBeInTheDocument();
   });
 
   test("displays correct title and subtitle and view details", () => {

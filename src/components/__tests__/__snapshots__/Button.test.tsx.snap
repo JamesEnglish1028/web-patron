@@ -244,12 +244,19 @@ exports[`variants ghost 1`] = `
 .emotion-0:hover {
   background-color: #d7e7f4;
   color: var(--theme-ui-colors-brand-primary);
+  fill: var(--theme-ui-colors-brand-primary);
   -webkit-text-decoration: none;
   text-decoration: none;
 }
 
 .emotion-0:focus {
   box-shadow: 0 0 0 0.2em rgba(0, 109, 255, 0.4);
+}
+
+.emotion-0:active {
+  background-color: #c3daee;
+  color: var(--theme-ui-colors-brand-primary);
+  fill: var(--theme-ui-colors-brand-primary);
 }
 
 <button
