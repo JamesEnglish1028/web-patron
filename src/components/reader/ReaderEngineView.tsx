@@ -113,6 +113,7 @@ const ReaderEngineView: React.FC<ReaderEngineViewProps> = ({
       <AudioReader
         url={resolvedUrl}
         authToken={authToken}
+        contentType={contentType}
         title={title}
         setLoading={setLoading}
       />

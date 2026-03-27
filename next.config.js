@@ -70,8 +70,16 @@ log(`Open eBooks Config: `, APP_CONFIG.openebooks);
 log(`Media Support: `, APP_CONFIG.mediaSupport);
 log(`Libraries: `, APP_CONFIG.libraries);
 
+// Point pdfjs-dist to the top-level package so it is NOT inside react-pdf's
+// node_modules path — this keeps Babel (transpilePackages:"react-pdf") from
+// double-transforming the already-compiled pdfjs class definitions.
+const topLevelPdfJsEntry = require.resolve("pdfjs-dist");
+
 const config = {
-  transpilePackages: ["@thepalaceproject/webpub-viewer"],
+  transpilePackages: [
+    "@thepalaceproject/webpub-viewer",
+    "@thepalaceproject/reader"
+  ],
   distDir: "_next",
   outputFileTracingRoot: path.resolve(__dirname),
   env: {
@@ -103,6 +111,11 @@ const config = {
     if (!isServer) {
       config.resolve.fallback.fs = false;
     }
+
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "pdfjs-dist$": topLevelPdfJsEntry
+    };
 
     // upload sourcemaps to bugsnag if we are not in dev
     if (!dev && APP_CONFIG.bugsnagApiKey) {
