@@ -19,7 +19,8 @@ type AudioBookmark = {
   createdAt: number;
 };
 
-const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const createId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const cleanPath = (value?: string | null): string => {
   if (!value) return "";
@@ -56,9 +57,8 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   setLoading
 }) => {
   const [error, setError] = React.useState<string | null>(null);
-  const [manifest, setManifest] = React.useState<ParsedAudiobookManifest | null>(
-    null
-  );
+  const [manifest, setManifest] =
+    React.useState<ParsedAudiobookManifest | null>(null);
   const [trackIndex, setTrackIndex] = React.useState(0);
   const [trackUrl, setTrackUrl] = React.useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = React.useState(1);
@@ -71,17 +71,26 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   const resumeTimeRef = React.useRef<number | null>(null);
 
   const storageKey = React.useMemo(() => `reader:audio:position:${url}`, [url]);
-  const bookmarksKey = React.useMemo(() => `reader:audio:bookmarks:${url}`, [url]);
+  const bookmarksKey = React.useMemo(
+    () => `reader:audio:bookmarks:${url}`,
+    [url]
+  );
   const leftControls = readerInfo?.backControl;
 
   const resolveTrackIndex = React.useCallback(
     (href: string) => {
       const target = cleanPath(href);
       if (!target) return -1;
-      return manifest?.tracks.findIndex(track => {
-        const source = cleanPath(track.href);
-        return source === target || source.endsWith(target) || target.endsWith(source);
-      }) ?? -1;
+      return (
+        manifest?.tracks.findIndex(track => {
+          const source = cleanPath(track.href);
+          return (
+            source === target ||
+            source.endsWith(target) ||
+            target.endsWith(source)
+          );
+        }) ?? -1
+      );
     },
     [manifest]
   );
@@ -106,7 +115,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
   React.useEffect(() => {
     let active = true;
-    let objectUrl: string | null = null;
+    const objectUrl: string | null = null;
 
     const load = async () => {
       setLoading(true);
@@ -146,7 +155,9 @@ const AudioReader: React.FC<AudioReaderProps> = ({
               setTrackIndex(savedTrackIndex);
               if (Number.isFinite(savedTime) && savedTime > 0) {
                 resumeTimeRef.current = savedTime;
-                const label = parsed.tracks[savedTrackIndex]?.title || `Track ${savedTrackIndex + 1}`;
+                const label =
+                  parsed.tracks[savedTrackIndex]?.title ||
+                  `Track ${savedTrackIndex + 1}`;
                 setResumeLabel(`Resume: ${label} at ${formatTime(savedTime)}`);
               }
             }
@@ -156,7 +167,9 @@ const AudioReader: React.FC<AudioReaderProps> = ({
         }
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed to load audiobook.");
+        setError(
+          err instanceof Error ? err.message : "Failed to load audiobook."
+        );
       } finally {
         if (active) setLoading(false);
       }
@@ -252,7 +265,11 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
     if (resumeTimeRef.current !== null) {
       const nextTime = Math.max(0, resumeTimeRef.current);
-      if (Number.isFinite(nextTime) && Number.isFinite(audio.duration) && nextTime < audio.duration) {
+      if (
+        Number.isFinite(nextTime) &&
+        Number.isFinite(audio.duration) &&
+        nextTime < audio.duration
+      ) {
         audio.currentTime = nextTime;
       }
       resumeTimeRef.current = null;
@@ -302,7 +319,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     () =>
       bookmarks
         .slice()
-        .sort((a, b) => (a.trackIndex - b.trackIndex) || (a.time - b.time)),
+        .sort((a, b) => a.trackIndex - b.trackIndex || a.time - b.time),
     [bookmarks]
   );
 
@@ -325,7 +342,15 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   const currentTrack = manifest.tracks[trackIndex];
 
   return (
-    <Box sx={{ flex: 1, width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+    <Box
+      sx={{
+        flex: 1,
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column"
+      }}
+    >
       <ReaderControls
         title={manifest.title}
         canPrev={false}
@@ -362,39 +387,65 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           </Box>
 
           {tocTab === "toc" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: "58vh", overflowY: "auto", pr: 1 }}>
-              {(manifest.toc.length > 0 ? manifest.toc : manifest.tracks).map((item: any, index: number) => {
-                const resolved = resolveTrackIndex(item.href || manifest.tracks[index]?.href || "");
-                const mappedIndex = resolved >= 0 ? resolved : index;
-                const isActive = mappedIndex === trackIndex;
-                return (
-                  <Button
-                    key={`${item.href || mappedIndex}-${index}`}
-                    variant="ghost"
-                    color="text"
-                    onClick={() => goToTrack(mappedIndex)}
-                    sx={{
-                      justifyContent: "space-between",
-                      textAlign: "left",
-                      border: "1px solid",
-                      borderColor: isActive ? "brand.primary" : "var(--reader-chrome-border, #e2e8f0)",
-                      borderRadius: 8,
-                      px: 2,
-                      py: 2,
-                      minHeight: "unset"
-                    }}
-                  >
-                    {item.title || manifest.tracks[mappedIndex]?.title || `Track ${mappedIndex + 1}`}
-                  </Button>
-                );
-              })}
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 1,
+                maxHeight: "58vh",
+                overflowY: "auto",
+                pr: 1
+              }}
+            >
+              {(manifest.toc.length > 0 ? manifest.toc : manifest.tracks).map(
+                (item: any, index: number) => {
+                  const resolved = resolveTrackIndex(
+                    item.href || manifest.tracks[index]?.href || ""
+                  );
+                  const mappedIndex = resolved >= 0 ? resolved : index;
+                  const isActive = mappedIndex === trackIndex;
+                  return (
+                    <Button
+                      key={`${item.href || mappedIndex}-${index}`}
+                      variant="ghost"
+                      color="text"
+                      onClick={() => goToTrack(mappedIndex)}
+                      sx={{
+                        justifyContent: "space-between",
+                        textAlign: "left",
+                        border: "1px solid",
+                        borderColor: isActive
+                          ? "brand.primary"
+                          : "var(--reader-chrome-border, #e2e8f0)",
+                        borderRadius: 8,
+                        px: 2,
+                        py: 2,
+                        minHeight: "unset"
+                      }}
+                    >
+                      {item.title ||
+                        manifest.tracks[mappedIndex]?.title ||
+                        `Track ${mappedIndex + 1}`}
+                    </Button>
+                  );
+                }
+              )}
             </Box>
           )}
 
           {tocTab === "bookmarks" && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {sortedBookmarks.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: "58vh", overflowY: "auto", pr: 1 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    maxHeight: "58vh",
+                    overflowY: "auto",
+                    pr: 1
+                  }}
+                >
                   {sortedBookmarks.map(bookmark => (
                     <Box
                       key={bookmark.id}
@@ -413,12 +464,22 @@ const AudioReader: React.FC<AudioReaderProps> = ({
                         <Button
                           variant="ghost"
                           color="text"
-                          onClick={() => goToTrack(bookmark.trackIndex, bookmark.time)}
-                          sx={{ justifyContent: "flex-start", px: 0, py: 0, minHeight: "unset" }}
+                          onClick={() =>
+                            goToTrack(bookmark.trackIndex, bookmark.time)
+                          }
+                          sx={{
+                            justifyContent: "flex-start",
+                            px: 0,
+                            py: 0,
+                            minHeight: "unset"
+                          }}
                         >
                           {bookmark.trackTitle}
                         </Button>
-                        <Text variant="text.detail" sx={{ color: "ui.gray.dark", mt: 1 }}>
+                        <Text
+                          variant="text.detail"
+                          sx={{ color: "ui.gray.dark", mt: 1 }}
+                        >
                           {formatTime(bookmark.time)}
                         </Text>
                       </Box>
@@ -441,9 +502,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       )}
       <Box sx={{ p: 3 }}>
         <H2>{manifest.title}</H2>
-        <Text sx={{ mt: 2, color: "ui.gray.dark" }}>
-          {manifest.author}
-        </Text>
+        <Text sx={{ mt: 2, color: "ui.gray.dark" }}>{manifest.author}</Text>
         {resumeLabel && (
           <Text variant="text.detail" sx={{ mt: 2, color: "ui.gray.dark" }}>
             {resumeLabel}
@@ -526,7 +585,10 @@ const AudioReader: React.FC<AudioReaderProps> = ({
                     justifyContent: "flex-start",
                     textAlign: "left",
                     border: "1px solid",
-                    borderColor: resolveTrackIndex(item.href) === trackIndex ? "brand.primary" : "var(--reader-chrome-border, #e2e8f0)",
+                    borderColor:
+                      resolveTrackIndex(item.href) === trackIndex
+                        ? "brand.primary"
+                        : "var(--reader-chrome-border, #e2e8f0)",
                     borderRadius: 8,
                     mb: 1
                   }}
