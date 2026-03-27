@@ -110,7 +110,10 @@ const BookCover: React.FC<{
             style={{ width: "30%", height: "30%", color: "#616161" }}
           />
         ) : (
-          <MediumIcon book={book} sx={{ height: "30%", fill: "ui.gray.dark" }} />
+          <MediumIcon
+            book={book}
+            sx={{ height: "30%", fill: "ui.gray.dark" }}
+          />
         )}
       </AspectRatio>
       <LazyImage

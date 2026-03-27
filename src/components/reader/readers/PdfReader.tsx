@@ -101,14 +101,17 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const [containerWidth, setContainerWidth] = React.useState(960);
   const [useNativeFallback, setUseNativeFallback] = React.useState(false);
   const [tocItems, setTocItems] = React.useState<PdfTocItem[]>([]);
-  const [tocTab, setTocTab] = React.useState<"toc" | "bookmarks" | "annotations">(
-    "toc"
-  );
+  const [tocTab, setTocTab] = React.useState<
+    "toc" | "bookmarks" | "annotations"
+  >("toc");
   const [bookmarks, setBookmarks] = React.useState<PdfBookmarkItem[]>([]);
   const [annotations, setAnnotations] = React.useState<PdfAnnotationItem[]>([]);
   const [annotationDraft, setAnnotationDraft] = React.useState("");
-  const [editingAnnotationId, setEditingAnnotationId] = React.useState<string | null>(null);
-  const [editingAnnotationDraft, setEditingAnnotationDraft] = React.useState("");
+  const [editingAnnotationId, setEditingAnnotationId] = React.useState<
+    string | null
+  >(null);
+  const [editingAnnotationDraft, setEditingAnnotationDraft] =
+    React.useState("");
 
   const [tocActive, setTocActive] = React.useState(false);
   const [searchActive, setSearchActive] = React.useState(false);
@@ -202,7 +205,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   React.useEffect(() => {
     try {
       const rawBookmarks = localStorage.getItem(`reader:pdf:bookmarks:${url}`);
-      const rawAnnotations = localStorage.getItem(`reader:pdf:annotations:${url}`);
+      const rawAnnotations = localStorage.getItem(
+        `reader:pdf:annotations:${url}`
+      );
       setBookmarks(rawBookmarks ? JSON.parse(rawBookmarks) : []);
       setAnnotations(rawAnnotations ? JSON.parse(rawAnnotations) : []);
     } catch {
@@ -216,7 +221,10 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   React.useEffect(() => {
     try {
-      localStorage.setItem(`reader:pdf:bookmarks:${url}`, JSON.stringify(bookmarks));
+      localStorage.setItem(
+        `reader:pdf:bookmarks:${url}`,
+        JSON.stringify(bookmarks)
+      );
     } catch {
       // ignore storage errors
     }
@@ -224,7 +232,10 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   React.useEffect(() => {
     try {
-      localStorage.setItem(`reader:pdf:annotations:${url}`, JSON.stringify(annotations));
+      localStorage.setItem(
+        `reader:pdf:annotations:${url}`,
+        JSON.stringify(annotations)
+      );
     } catch {
       // ignore storage errors
     }
@@ -255,12 +266,12 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         setNumPages(pdf.numPages || 0);
         setPageNumber(1);
 
-          const resolveDestToPage = async (dest: unknown) => {
+        const resolveDestToPage = async (dest: unknown) => {
           if (!pdf.getPageIndex) return undefined;
 
-            let explicitDest: PdfExplicitDestination | null = null;
+          let explicitDest: PdfExplicitDestination | null = null;
           if (Array.isArray(dest)) {
-              explicitDest = dest as PdfExplicitDestination;
+            explicitDest = dest as PdfExplicitDestination;
           } else if (typeof dest === "string" && pdf.getDestination) {
             explicitDest = await pdf.getDestination(dest);
           }
@@ -277,9 +288,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           }
         };
 
-          const normalizeOutline = async (
-            items: PdfOutlineNode[] | null
-          ): Promise<PdfTocItem[]> => {
+        const normalizeOutline = async (
+          items: PdfOutlineNode[] | null
+        ): Promise<PdfTocItem[]> => {
           if (!items?.length) return [];
 
           const normalized = await Promise.all(
@@ -379,7 +390,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             ? Math.max(220, (containerWidth - 96) / 2)
             : Math.max(220, containerWidth - 48);
 
-          const tasks: PdfRenderTask[] = [];
+        const tasks: PdfRenderTask[] = [];
 
         for (let i = 0; i < canvases.length; i += 1) {
           const canvas = canvases[i];
@@ -452,7 +463,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const zoomOut = () => setScale(prev => Math.max(0.6, prev - 0.1));
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
-  const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const createId = () =>
+    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
   const addBookmark = () => {
     if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
@@ -769,7 +781,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
               {tocTab === "toc" && (
                 <>
                   {tocItems.length > 0 ? (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                    >
                       <PdfTocTree
                         items={tocItems}
                         activePage={pageNumber}
@@ -786,8 +800,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     </Box>
                   ) : (
                     <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No PDF outline detected. This file may not include structured
-                      TOC entries.
+                      No PDF outline detected. This file may not include
+                      structured TOC entries.
                     </Text>
                   )}
                 </>
@@ -821,7 +835,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                               justifyContent: "space-between",
                               gap: 2,
                               border: "1px solid",
-                              borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                              borderColor:
+                                "var(--reader-chrome-border, #e2e8f0)",
                               borderRadius: 8,
                               p: 2
                             }}
@@ -829,10 +844,16 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                             <Button
                               variant="ghost"
                               color="text"
-                              sx={{ justifyContent: "flex-start", px: 0, py: 0, minHeight: "unset" }}
+                              sx={{
+                                justifyContent: "flex-start",
+                                px: 0,
+                                py: 0,
+                                minHeight: "unset"
+                              }}
                               onClick={() => {
                                 const alignedPage =
-                                  pageView === "spread" && bookmark.pageNumber % 2 === 0
+                                  pageView === "spread" &&
+                                  bookmark.pageNumber % 2 === 0
                                     ? Math.max(1, bookmark.pageNumber - 1)
                                     : bookmark.pageNumber;
                                 setPageNumber(alignedPage);
@@ -905,7 +926,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     </Button>
                   </Box>
                   {annotations.length > 0 ? (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                    >
                       {annotations
                         .slice()
                         .sort((a, b) => a.pageNumber - b.pageNumber)
@@ -914,7 +937,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                             key={annotation.id}
                             sx={{
                               border: "1px solid",
-                              borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                              borderColor:
+                                "var(--reader-chrome-border, #e2e8f0)",
                               borderRadius: 8,
                               p: 2
                             }}
@@ -933,7 +957,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                 color="text"
                                 onClick={() => {
                                   const alignedPage =
-                                    pageView === "spread" && annotation.pageNumber % 2 === 0
+                                    pageView === "spread" &&
+                                    annotation.pageNumber % 2 === 0
                                       ? Math.max(1, annotation.pageNumber - 1)
                                       : annotation.pageNumber;
                                   setPageNumber(alignedPage);
@@ -942,18 +967,28 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                               >
                                 Page {annotation.pageNumber}
                               </Button>
-                              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1
+                                }}
+                              >
                                 <Button
                                   variant="ghost"
                                   color="text"
-                                  onClick={() => beginAnnotationEdit(annotation)}
+                                  onClick={() =>
+                                    beginAnnotationEdit(annotation)
+                                  }
                                 >
                                   Edit
                                 </Button>
                                 <Button
                                   variant="ghost"
                                   color="text"
-                                  onClick={() => removeAnnotation(annotation.id)}
+                                  onClick={() =>
+                                    removeAnnotation(annotation.id)
+                                  }
                                 >
                                   Remove
                                 </Button>
@@ -965,7 +1000,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                   className="pdf-annotation-input"
                                   value={editingAnnotationDraft}
                                   onChange={event =>
-                                    setEditingAnnotationDraft(event.target.value)
+                                    setEditingAnnotationDraft(
+                                      event.target.value
+                                    )
                                   }
                                   placeholder="Edit note"
                                 />
@@ -995,7 +1032,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                 </Box>
                               </>
                             ) : (
-                              <Text variant="text.detail">{annotation.note}</Text>
+                              <Text variant="text.detail">
+                                {annotation.note}
+                              </Text>
                             )}
                           </Box>
                         ))}
@@ -1189,9 +1228,7 @@ const PdfTocNode: React.FC<{
       <Box
         as={item.pageNumber ? "button" : "div"}
         onClick={
-          item.pageNumber
-            ? () => onSelectPage(item.pageNumber)
-            : undefined
+          item.pageNumber ? () => onSelectPage(item.pageNumber) : undefined
         }
         sx={{
           appearance: "none",
@@ -1226,7 +1263,9 @@ const PdfTocNode: React.FC<{
           }
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, flex: 1 }}>
+        <Box
+          sx={{ display: "flex", alignItems: "flex-start", gap: 2, flex: 1 }}
+        >
           {hasChildren ? (
             <Button
               variant="ghost"

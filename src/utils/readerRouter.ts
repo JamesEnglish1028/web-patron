@@ -15,7 +15,9 @@ const parseContentType = (
   const profileParam = params
     .map(part => part.trim())
     .find(part => part.startsWith("profile="));
-  const profile = profileParam ? profileParam.replace(/^profile=("|')?/, "").replace(/("|')?$/, "") : "";
+  const profile = profileParam
+    ? profileParam.replace(/^profile=("|')?/, "").replace(/("|')?$/, "")
+    : "";
   return { type: media.trim(), profile };
 };
 

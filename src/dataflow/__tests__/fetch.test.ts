@@ -115,7 +115,9 @@ describe("fetchWithHeaders", () => {
   });
 
   test("retries without the X-Requested-With header after a network or CORS failure", async () => {
-    fetchMock.mockRejectOnce(new TypeError("NetworkError when attempting to fetch resource."));
+    fetchMock.mockRejectOnce(
+      new TypeError("NetworkError when attempting to fetch resource.")
+    );
     fetchMock.mockResponseOnce("you did it!");
 
     await fetchWithHeaders("some-url", "some token", {

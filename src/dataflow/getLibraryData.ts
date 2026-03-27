@@ -28,7 +28,8 @@ export async function fetchAuthDocument(
 ): Promise<OPDS1.AuthDocument> {
   const response = await fetch(url);
   if (!response.ok) {
-    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
     const details =
       contentType.includes("application/json") || contentType.includes("+json")
         ? await response.json()

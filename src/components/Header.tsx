@@ -13,10 +13,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBook } from "@fortawesome/free-solid-svg-icons";
 import type { ThemeUIStyleObject } from "theme-ui";
 
-const MyBooksIcon: React.FC<{ className?: string; sx?: ThemeUIStyleObject }> = ({
-  className,
-  sx
-}) => (
+const MyBooksIcon: React.FC<{
+  className?: string;
+  sx?: ThemeUIStyleObject;
+}> = ({ className, sx }) => (
   <span className={className} sx={sx}>
     <FontAwesomeIcon icon={faBook} />
   </span>

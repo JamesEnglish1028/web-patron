@@ -32,7 +32,10 @@ const safeParse = <T>(raw: string | null, fallback: T): T => {
 
 export const loadBookmarks = (bookKey: string): ReaderBookmark[] => {
   try {
-    return safeParse<ReaderBookmark[]>(localStorage.getItem(bookmarkKey(bookKey)), []);
+    return safeParse<ReaderBookmark[]>(
+      localStorage.getItem(bookmarkKey(bookKey)),
+      []
+    );
   } catch {
     return [];
   }
@@ -48,7 +51,10 @@ export const saveBookmarks = (bookKey: string, bookmarks: ReaderBookmark[]) => {
 
 export const loadCitations = (bookKey: string): ReaderCitation[] => {
   try {
-    return safeParse<ReaderCitation[]>(localStorage.getItem(citationKey(bookKey)), []);
+    return safeParse<ReaderCitation[]>(
+      localStorage.getItem(citationKey(bookKey)),
+      []
+    );
   } catch {
     return [];
   }
@@ -62,4 +68,5 @@ export const saveCitations = (bookKey: string, citations: ReaderCitation[]) => {
   }
 };
 
-export const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+export const createId = () =>
+  `${Date.now()}-${Math.random().toString(16).slice(2)}`;

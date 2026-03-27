@@ -1,4 +1,8 @@
-const LOCAL_CM_HOSTS = new Set(["localhost:6500", "127.0.0.1:6500", "[::1]:6500"]);
+const LOCAL_CM_HOSTS = new Set([
+  "localhost:6500",
+  "127.0.0.1:6500",
+  "[::1]:6500"
+]);
 
 export function toBrowserFetchUrl(url: string): string {
   if (typeof window === "undefined") return url;

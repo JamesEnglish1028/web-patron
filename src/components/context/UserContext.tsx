@@ -297,15 +297,20 @@ async function fetchPatronProfile([url, token]: readonly [
   });
 
   if (!response.ok) {
-    const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-    if (contentType.includes("application/json") || contentType.includes("+json")) {
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("+json")
+    ) {
       throw new ServerError(url, response.status, await response.json());
     }
 
     const text = await response.text();
     throw new ServerError(url, response.status, {
       title: "Server Error",
-      detail: text.trim().slice(0, 300) || "Unexpected non-JSON error response body.",
+      detail:
+        text.trim().slice(0, 300) || "Unexpected non-JSON error response body.",
       status: response.status
     });
   }

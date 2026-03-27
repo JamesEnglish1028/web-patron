@@ -7,7 +7,10 @@ import {
 } from "types/opds1";
 import type { FulfillmentLink } from "interfaces";
 
-const link = (contentType: string, indirectionType?: string): FulfillmentLink => ({
+const link = (
+  contentType: string,
+  indirectionType?: string
+): FulfillmentLink => ({
   contentType: contentType as any,
   url: `https://example.org/${encodeURIComponent(contentType)}`,
   supportLevel: "show",
@@ -16,12 +19,16 @@ const link = (contentType: string, indirectionType?: string): FulfillmentLink =>
 
 describe("resolveReaderActionFromFulfillmentLinks", () => {
   test("routes EPUB to epubjs", () => {
-    const action = resolveReaderActionFromFulfillmentLinks([link(EpubMediaType)]);
+    const action = resolveReaderActionFromFulfillmentLinks([
+      link(EpubMediaType)
+    ]);
     expect(action?.engine).toBe("epubjs");
   });
 
   test("routes PDF to pdfjs", () => {
-    const action = resolveReaderActionFromFulfillmentLinks([link(PdfMediaType)]);
+    const action = resolveReaderActionFromFulfillmentLinks([
+      link(PdfMediaType)
+    ]);
     expect(action?.engine).toBe("pdfjs");
   });
 

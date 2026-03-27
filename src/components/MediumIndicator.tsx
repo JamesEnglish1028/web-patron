@@ -43,12 +43,7 @@ export const MediumIcon: React.FC<{
   book: AnyBook;
   className?: string;
   sx?: SxProp;
-}> = ({
-  book,
-  className,
-  sx,
-  ...rest
-}) => {
+}> = ({ book, className, sx, ...rest }) => {
   const medium = getMedium(book);
 
   if (medium === "") return null;
