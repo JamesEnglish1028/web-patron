@@ -45,6 +45,7 @@ export type ReadInternalFulfillment = {
   url: string;
   contentType?: string;
   buttonLabel: string;
+  getLocation?: GetLocationWithIndirection;
 };
 export type ReadExternalFulfillment = {
   type: "read-online-external";
@@ -93,12 +94,26 @@ export const getFulfillmentFromLink =
 
     switch (contentType) {
       case OPDS1.PdfMediaType:
-      case OPDS1.Mobi8Mediatype:
-      case OPDS1.MobiPocketMediaType:
-      case OPDS1.EpubMediaType:
+      case OPDS1.EpubMediaType: {
+        const normalizedIndirection = String(indirectionType || "");
+        const isAdobeDrm =
+          normalizedIndirection === OPDS1.AdobeDrmMediaType ||
+          normalizedIndirection === OPDS1.IncorrectAdobeDrmMediaType;
+        if (!isAdobeDrm) {
+          return {
+            id: link.url,
+            type: "read-online-internal",
+            url: link.url,
+            contentType,
+            buttonLabel: action,
+            getLocation: constructGetLocation(
+              indirectionType,
+              contentType,
+              link.url
+            )
+          };
+        }
         const typeName = typeMap[contentType].name;
-        const modifier =
-          indirectionType === OPDS1.AdobeDrmMediaType ? "Adobe " : "";
         return {
           id: link.url,
           getLocation: constructGetLocation(
@@ -107,9 +122,41 @@ export const getFulfillmentFromLink =
             link.url
           ),
           type: "download",
-          buttonLabel: `Download ${modifier}${typeName}`,
+          buttonLabel: `Download Adobe ${typeName}`,
           contentType
         };
+      }
+      case OPDS1.AudiobookMediaType:
+      case OPDS1.AccessRestrictionAudiobookMediaType:
+      case OPDS1.LcpAudioBookMediaType: {
+        return {
+          id: link.url,
+          type: "read-online-internal",
+          url: link.url,
+          contentType,
+          buttonLabel: action,
+          getLocation: constructGetLocation(
+            indirectionType,
+            contentType,
+            link.url
+          )
+        };
+      }
+      case OPDS1.Mobi8Mediatype:
+      case OPDS1.MobiPocketMediaType: {
+        const typeName = typeMap[contentType].name;
+        return {
+          id: link.url,
+          getLocation: constructGetLocation(
+            indirectionType,
+            contentType,
+            link.url
+          ),
+          type: "download",
+          buttonLabel: `Download ${typeName}`,
+          contentType
+        };
+      }
 
       case OPDS1.ExternalReaderMediaType:
       case OPDS1.ExternalReaderMediaTypeUnquoted:
