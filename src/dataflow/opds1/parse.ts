@@ -174,7 +174,9 @@ function buildFulfillmentLink(feedUrl: string) {
         indirectionType as
           | OPDS1.IndirectAcquisitionType
           | typeof OPDS1.IncorrectAdobeDrmMediaType
-      )
+      ),
+      rel: link.rel,
+      templated: Boolean((link as any).templated ?? (link as any).template)
     };
   };
 }
@@ -238,7 +240,9 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
       return {
         url: resolve(feedUrl, link.href),
         contentType: link.type as OPDS1.AnyBookMediaType,
-        supportLevel
+        supportLevel,
+        rel: link.rel,
+        templated: Boolean((link as any).templated ?? (link as any).template)
       };
     });
 

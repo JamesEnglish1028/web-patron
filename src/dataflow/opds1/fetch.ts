@@ -5,6 +5,7 @@ import { entryToBook, feedToCollection } from "dataflow/opds1/parse";
 import fetchWithHeaders from "dataflow/fetch";
 import parseSearchData from "dataflow/opds1/parseSearchData";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
+import { getProxiedUrl } from "utils/proxyUrl";
 
 const parser = new OPDSParser();
 /**
@@ -109,16 +110,64 @@ export async function fetchBook(
  */
 export async function fetchBearerToken(
   url: string,
-  token?: string
+  token?: string,
+  additionalHeaders?: { [key: string]: string }
 ): Promise<OPDS1.BearerTokenDocument> {
-  const response = await fetchWithHeaders(url, token);
-  const json = await response.json();
+  const parseJson = async (response: Response) => {
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
+  };
 
-  if (!response.ok) {
-    throw new ServerError(url, response.status, json);
+  const getAttempt = await fetchWithHeaders(
+    url,
+    token,
+    additionalHeaders,
+    "GET"
+  );
+  const getPayload = await parseJson(getAttempt);
+
+  if (getAttempt.ok) {
+    return getPayload;
   }
 
-  return json;
+  const payloadText = JSON.stringify(getPayload).toLowerCase();
+  const shouldRetryWithPost =
+    getAttempt.status === 405 ||
+    payloadText.includes("cannot-fulfill-loan") ||
+    payloadText.includes("method not allowed");
+
+  if (shouldRetryWithPost) {
+    const postHeaders: Record<string, string> = {
+      ...(additionalHeaders || {})
+    };
+
+    if (token) {
+      if (typeof window === "undefined") {
+        postHeaders.Authorization = token;
+      } else {
+        // Browser-side POST token exchange must go through fulfill proxy.
+        postHeaders["X-Reader-Authorization"] = token;
+      }
+    }
+
+    const postUrl = typeof window === "undefined" ? url : getProxiedUrl(url);
+    const postAttempt = await fetch(postUrl, {
+      method: "POST",
+      headers: postHeaders
+    });
+    const postPayload = await parseJson(postAttempt);
+
+    if (!postAttempt.ok) {
+      throw new ServerError(url, postAttempt.status, postPayload);
+    }
+
+    return postPayload;
+  }
+
+  throw new ServerError(url, getAttempt.status, getPayload);
 }
 
 /**
@@ -151,7 +200,10 @@ async function parseErrorResponse(
 ): Promise<OPDS1.ProblemDocument> {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
 
-  if (contentType.includes("application/json") || contentType.includes("+json")) {
+  if (
+    contentType.includes("application/json") ||
+    contentType.includes("+json")
+  ) {
     try {
       return await response.json();
     } catch {

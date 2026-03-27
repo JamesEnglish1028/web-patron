@@ -65,6 +65,22 @@ export type SupportedFulfillment =
 
 export type AnyFullfillment = SupportedFulfillment | UnsupportedFulfillment;
 
+const isPalaceManagerLikeUrl = (value: string) => {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith("palace.io") ||
+      hostname.endsWith("palaceproject.io") ||
+      hostname.endsWith("thepalaceproject.org")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const getFulfillmentFromLink =
   (book: AnyBook) =>
   (link: FulfillmentLink): AnyFullfillment => {
@@ -247,12 +263,86 @@ const constructGetLocation =
     }
 
     if (indirectionType === OPDS1.BearerTokenMediaType) {
-      const bearerToken = await fetchBearerToken(url, token);
+      const bearerToken = await fetchBearerToken(url, token, {
+        Accept: OPDS1.BearerTokenMediaType
+      });
+      const tokenType = bearerToken.token_type || "Bearer";
 
       return {
         url: bearerToken.location,
-        token: `${bearerToken.token_type} ${bearerToken.access_token}`
+        token: `${tokenType} ${bearerToken.access_token}`
       };
+    }
+
+    // Some audiobook feeds expose a direct fulfill URL but still require
+    // bearer-token exchange to return { location, token }.
+    if (
+      [
+        OPDS1.AudiobookMediaType,
+        OPDS1.AccessRestrictionAudiobookMediaType,
+        OPDS1.LcpAudioBookMediaType
+      ].includes(contentType)
+    ) {
+      if (isPalaceManagerLikeUrl(url)) {
+        return {
+          url,
+          token
+        };
+      }
+
+      try {
+        const bearerToken = await fetchBearerToken(url, token, {
+          Accept: OPDS1.BearerTokenMediaType
+        });
+        if (bearerToken?.location && bearerToken?.access_token) {
+          const tokenType = bearerToken.token_type || "Bearer";
+          return {
+            url: bearerToken.location,
+            token: `${tokenType} ${bearerToken.access_token}`
+          };
+        }
+      } catch {
+        try {
+          const audiobookEntry = (await fetchBook(
+            url,
+            catalogUrl,
+            token
+          )) as FulfillableBook;
+          const audiobookLink = audiobookEntry.fulfillmentLinks?.find(link =>
+            [
+              OPDS1.AudiobookMediaType,
+              OPDS1.AccessRestrictionAudiobookMediaType,
+              OPDS1.LcpAudioBookMediaType
+            ].includes(link.contentType)
+          );
+
+          if (audiobookLink) {
+            if (audiobookLink.indirectionType === OPDS1.BearerTokenMediaType) {
+              const bearerToken = await fetchBearerToken(
+                audiobookLink.url,
+                token,
+                {
+                  Accept: OPDS1.BearerTokenMediaType
+                }
+              );
+              if (bearerToken?.location && bearerToken?.access_token) {
+                const tokenType = bearerToken.token_type || "Bearer";
+                return {
+                  url: bearerToken.location,
+                  token: `${tokenType} ${bearerToken.access_token}`
+                };
+              }
+            }
+
+            return {
+              url: audiobookLink.url,
+              token
+            };
+          }
+        } catch {
+          // fall back to direct URL flow
+        }
+      }
     }
 
     // otherwise there is no indirection, just return the url and token.

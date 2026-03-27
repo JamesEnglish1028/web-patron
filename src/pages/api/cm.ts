@@ -66,19 +66,57 @@ export default async function handler(
     return;
   }
 
-  if (req.method !== "GET" && req.method !== "HEAD") {
+  if (
+    req.method !== "GET" &&
+    req.method !== "HEAD" &&
+    req.method !== "POST" &&
+    req.method !== "PUT"
+  ) {
     res.status(405).json({
       title: "Method Not Allowed",
-      detail: "Only GET and HEAD are supported"
+      detail: "Only GET, HEAD, POST, and PUT are supported"
     });
     return;
+  }
+
+  let requestBody: Buffer | undefined;
+  if (req.method === "POST" || req.method === "PUT") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    requestBody = Buffer.concat(chunks);
   }
 
   try {
     const upstream = await fetch(target.toString(), {
       method: req.method,
-      headers: buildForwardHeaders(req)
+      headers: buildForwardHeaders(req),
+      body: requestBody
     });
+
+    if (!upstream.ok) {
+      const errorText = await upstream.text().catch(() => "");
+      console.error("[api/cm] upstream non-OK", {
+        method: req.method,
+        url: target.toString(),
+        status: upstream.status,
+        hasAuth: typeof req.headers.authorization === "string",
+        accept: req.headers.accept,
+        bodySnippet: errorText.slice(0, 300)
+      });
+
+      const contentType = upstream.headers.get("content-type");
+      const cacheControl = upstream.headers.get("cache-control");
+      const expires = upstream.headers.get("expires");
+      if (contentType) res.setHeader("content-type", contentType);
+      if (cacheControl) res.setHeader("cache-control", cacheControl);
+      if (expires) res.setHeader("expires", expires);
+
+      res.status(upstream.status);
+      res.send(Buffer.from(errorText));
+      return;
+    }
 
     res.status(upstream.status);
 

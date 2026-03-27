@@ -20,7 +20,127 @@ import useError from "hooks/useError";
 import useLinkUtils from "hooks/useLinkUtils";
 import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
 import { storeReaderAuth } from "utils/readerAuth";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 import Stack from "./Stack";
+
+const sleep = (ms: number) =>
+  new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
+
+const isLocalCmFulfillUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "http:" &&
+      ["localhost:6500", "127.0.0.1:6500", "[::1]:6500"].includes(
+        parsed.host
+      ) &&
+      parsed.pathname.includes("/fulfill/")
+    );
+  } catch {
+    return false;
+  }
+};
+
+async function waitForAudiobookFulfillmentReady(
+  fulfillUrl: string,
+  authToken?: string
+) {
+  if (!isLocalCmFulfillUrl(fulfillUrl)) return;
+
+  const endpoint = toBrowserFetchUrl(fulfillUrl);
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    headers.Authorization = authToken;
+  }
+
+  for (const waitMs of [0, 500, 1200, 2500]) {
+    if (waitMs > 0) await sleep(waitMs);
+    const response = await fetch(endpoint, {
+      method: "HEAD",
+      headers: Object.keys(headers).length ? headers : undefined
+    });
+
+    if (response.ok) return;
+
+    const status = response.status;
+    if (status !== 500 && status !== 502 && status !== 503) {
+      throw new Error(`Audiobook fulfill check failed (${status}).`);
+    }
+  }
+
+  throw new Error(
+    "This audiobook loan is still syncing with the provider. Please try again in a few seconds."
+  );
+}
+
+async function findLatestAudiobookFulfillUrlFromLoans(
+  currentFulfillUrl: string,
+  authToken?: string,
+  titleHint?: string
+): Promise<string | null> {
+  if (!isLocalCmFulfillUrl(currentFulfillUrl)) return null;
+
+  let loansUrl: string;
+  try {
+    const parsed = new URL(currentFulfillUrl);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const library = parts[0];
+    if (!library) return null;
+    loansUrl = `${parsed.origin}/${library}/loans/`;
+  } catch {
+    return null;
+  }
+
+  const headers: Record<string, string> = {
+    Accept:
+      "application/atom+xml;profile=opds-catalog, application/xml, text/xml, */*"
+  };
+  if (authToken) {
+    headers.Authorization = authToken;
+  }
+
+  const response = await fetch(toBrowserFetchUrl(loansUrl), {
+    method: "GET",
+    headers
+  });
+  if (!response.ok) return null;
+
+  const xmlText = await response.text();
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+  const entries = Array.from(doc.getElementsByTagName("entry"));
+
+  const isAudiobookType = (value: string) => {
+    const lower = value.toLowerCase();
+    return (
+      lower.includes("application/audiobook+json") ||
+      lower.includes("application/audiobook+lcp") ||
+      lower.includes("feedbooks.com/audiobooks/access-restriction")
+    );
+  };
+
+  for (const entry of entries) {
+    const entryTitle =
+      entry.getElementsByTagName("title")[0]?.textContent?.trim() || "";
+    if (titleHint && entryTitle && entryTitle !== titleHint) continue;
+
+    const links = Array.from(entry.getElementsByTagName("link"));
+    for (const link of links) {
+      const rel = (link.getAttribute("rel") || "").toLowerCase();
+      const type = link.getAttribute("type") || "";
+      const href = link.getAttribute("href") || "";
+      if (!href) continue;
+      if (rel !== "http://opds-spec.org/acquisition") continue;
+      if (!isAudiobookType(type)) continue;
+
+      const resolvedHref = new URL(href, loansUrl).toString();
+      if (resolvedHref !== currentFulfillUrl) return resolvedHref;
+    }
+  }
+
+  return null;
+}
 
 const FulfillmentButton: React.FC<{
   details: AnyFullfillment;
@@ -42,6 +162,7 @@ const FulfillmentButton: React.FC<{
           details={details}
           isPrimaryAction={isPrimaryAction}
           trackOpenBookUrl={book.trackOpenBookUrl}
+          title={book.title}
         />
       );
     case "read-online-external":
@@ -170,8 +291,9 @@ const ReadOnlineExternal: React.FC<{
 const ReadOnlineInternal: React.FC<{
   details: ReadInternalFulfillment;
   trackOpenBookUrl: string | null;
+  title?: string;
   isPrimaryAction: boolean;
-}> = ({ details, isPrimaryAction, trackOpenBookUrl }) => {
+}> = ({ details, isPrimaryAction, trackOpenBookUrl, title }) => {
   const router = useRouter();
   const { buildReaderLink } = useLinkUtils();
   const { catalogUrl } = useLibraryContext();
@@ -183,9 +305,32 @@ const ReadOnlineInternal: React.FC<{
     setLoading(true);
     clearError();
     try {
-      const resolved = details.getLocation
+      let resolved = details.getLocation
         ? await details.getLocation(catalogUrl, token)
         : { url: details.url, token: undefined };
+      if (
+        [
+          OPDS1.AudiobookMediaType,
+          OPDS1.AccessRestrictionAudiobookMediaType,
+          OPDS1.LcpAudioBookMediaType
+        ].includes(details.contentType as OPDS1.AnyBookMediaType)
+      ) {
+        try {
+          await waitForAudiobookFulfillmentReady(resolved.url, resolved.token);
+        } catch (error) {
+          const refreshedFulfillUrl =
+            await findLatestAudiobookFulfillUrlFromLoans(
+              resolved.url,
+              resolved.token,
+              title
+            );
+          if (!refreshedFulfillUrl) {
+            throw error;
+          }
+          resolved = { ...resolved, url: refreshedFulfillUrl };
+          await waitForAudiobookFulfillmentReady(resolved.url, resolved.token);
+        }
+      }
       const authKey = resolved.token
         ? storeReaderAuth({ url: resolved.url, token: resolved.token })
         : null;

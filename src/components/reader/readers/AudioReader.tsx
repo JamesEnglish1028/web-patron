@@ -10,6 +10,7 @@ import {
 } from "utils/audiobookManifest";
 import Button from "components/Button";
 import { getProxiedUrl } from "utils/proxyUrl";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 type AudioBookmark = {
   id: string;
@@ -32,6 +33,62 @@ const cleanPath = (value?: string | null): string => {
   }
 };
 
+const isFulfillUrl = (value?: string | null): boolean => {
+  if (!value) return false;
+  try {
+    return new URL(value).pathname.includes("/fulfill/");
+  } catch {
+    return value.includes("/fulfill/");
+  }
+};
+
+const isLocalCmUrl = (value?: string | null): boolean => {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "http:" &&
+      ["localhost:6500", "127.0.0.1:6500", "[::1]:6500"].includes(parsed.host)
+    );
+  } catch {
+    return false;
+  }
+};
+
+const buildReaderRequest = (
+  targetUrl: string,
+  authToken?: string,
+  accept?: string
+): { url: string; headers: Record<string, string> | undefined } => {
+  const headers: Record<string, string> = {};
+  const localCm = isLocalCmUrl(targetUrl);
+
+  if (authToken) {
+    if (localCm) {
+      headers.Authorization = authToken;
+    } else {
+      headers["X-Reader-Authorization"] = authToken;
+    }
+  }
+
+  if (accept) {
+    headers.accept = accept;
+  }
+
+  return {
+    url: localCm ? toBrowserFetchUrl(targetUrl) : getProxiedUrl(targetUrl),
+    headers: Object.keys(headers).length ? headers : undefined
+  };
+};
+
+const sleep = (ms: number) =>
+  new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
+
+const isCannotFulfillLoanError = (status: number, detail: string) =>
+  status === 500 && detail.toLowerCase().includes("cannot-fulfill-loan");
+
 const formatTime = (seconds: number): string => {
   const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const hours = Math.floor(safe / 3600);
@@ -47,6 +104,7 @@ const formatTime = (seconds: number): string => {
 type AudioReaderProps = {
   url: string;
   authToken?: string;
+  contentType?: string;
   title?: string;
   setLoading: (value: boolean) => void;
 };
@@ -54,6 +112,7 @@ type AudioReaderProps = {
 const AudioReader: React.FC<AudioReaderProps> = ({
   url,
   authToken,
+  contentType,
   setLoading
 }) => {
   const [error, setError] = React.useState<string | null>(null);
@@ -125,17 +184,110 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       resumeTimeRef.current = null;
       setResumeLabel(null);
       try {
-        const response = await fetch(getProxiedUrl(url), {
-          headers: authToken
-            ? { "X-Reader-Authorization": authToken }
-            : undefined
+        const initialRequest = buildReaderRequest(
+          url,
+          authToken,
+          contentType && !isFulfillUrl(url) ? contentType : undefined
+        );
+        let response = await fetch(initialRequest.url, {
+          headers: initialRequest.headers
         });
         if (!response.ok) {
-          throw new Error(`Failed to load manifest (${response.status})`);
+          let detail = await response.text().catch(() => "");
+
+          // Palace/local-CM can briefly return cannot-fulfill-loan immediately
+          // after borrow while provider state is still syncing.
+          if (
+            isLocalCmUrl(url) &&
+            isFulfillUrl(url) &&
+            isCannotFulfillLoanError(response.status, detail)
+          ) {
+            for (const waitMs of [400, 900, 1500]) {
+              await sleep(waitMs);
+              response = await fetch(initialRequest.url, {
+                headers: initialRequest.headers
+              });
+              if (response.ok) break;
+              detail = await response.text().catch(() => "");
+              if (!isCannotFulfillLoanError(response.status, detail)) break;
+            }
+          }
+
+          if (response.ok) {
+            // Continue below with successful retried response.
+          } else {
+            const suffix = isCannotFulfillLoanError(response.status, detail)
+              ? " (Palace Manager reports loan cannot be fulfilled yet)"
+              : "";
+            throw new Error(
+              `Failed to load manifest (${response.status})${
+                detail ? `: ${detail.slice(0, 240)}` : ""
+              }${suffix}`
+            );
+          }
         }
-        const text = await response.text();
+
+        // Check if response is a Library Simplified bearer-token document
+        const responseContentType =
+          response.headers.get("content-type")?.toLowerCase() || "";
+        let manifestText: string;
+        let manifestUrl = url;
+
+        if (
+          responseContentType.includes(
+            "application/vnd.librarysimplified.bearer-token+json"
+          )
+        ) {
+          // Two-step auth: extract token and location from bearer-token document
+          const bearerTokenData = await response.json();
+          const accessToken =
+            bearerTokenData.access_token || bearerTokenData.accessToken;
+          const location = bearerTokenData.location;
+
+          if (!accessToken || !location) {
+            throw new Error(
+              "Bearer-token document missing accessToken or location"
+            );
+          }
+
+          // Cache the extracted token for track fetches
+          try {
+            sessionStorage.setItem(
+              `reader:audio:token:${location}`,
+              accessToken
+            );
+          } catch {
+            // ignore storage errors
+          }
+
+          // Fetch manifest from the provided location with new bearer token
+          manifestUrl = location;
+          const manifestRequest = buildReaderRequest(
+            manifestUrl,
+            `Bearer ${accessToken}`,
+            contentType || "application/audiobook+json"
+          );
+          response = await fetch(manifestRequest.url, {
+            headers: manifestRequest.headers
+          });
+
+          if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            throw new Error(
+              `Failed to load manifest from location (${response.status})${
+                detail ? `: ${detail.slice(0, 240)}` : ""
+              }`
+            );
+          }
+
+          manifestText = await response.text();
+        } else {
+          // Direct manifest response (no bearer-token indirection)
+          manifestText = await response.text();
+        }
+
         if (!active) return;
-        const parsed = parseAudiobookManifest(text, url);
+        const parsed = parseAudiobookManifest(manifestText, manifestUrl);
         setManifest(parsed);
 
         try {
@@ -181,7 +333,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [url, authToken, setLoading, storageKey]);
+  }, [url, authToken, contentType, setLoading, storageKey]);
 
   React.useEffect(() => {
     try {
@@ -216,13 +368,49 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       setTrackUrl(null);
       const track = manifest.tracks[trackIndex];
       try {
-        const response = await fetch(getProxiedUrl(track.href), {
-          headers: authToken
-            ? { "X-Reader-Authorization": authToken }
-            : undefined
-        });
+        const headers: Record<string, string> = {};
+
+        // Try to use cached bearer token for this specific track URL
+        try {
+          const cachedToken = sessionStorage.getItem(
+            `reader:audio:token:${track.href}`
+          );
+          if (cachedToken) {
+            headers["X-Reader-Authorization"] = `Bearer ${cachedToken}`;
+          }
+        } catch {
+          // ignore storage errors
+        }
+
+        // Fallback to X-Reader-Authorization if no cached bearer token
+        if (!headers["X-Reader-Authorization"] && authToken) {
+          headers["X-Reader-Authorization"] = authToken;
+        }
+
+        const localCm = isLocalCmUrl(track.href);
+        const trackHeaders: Record<string, string> = localCm ? {} : headers;
+
+        if (localCm) {
+          const trackAuthorization =
+            headers["X-Reader-Authorization"] || headers.Authorization;
+          if (trackAuthorization) {
+            trackHeaders.Authorization = trackAuthorization;
+          }
+        }
+
+        const response = await fetch(
+          localCm ? toBrowserFetchUrl(track.href) : getProxiedUrl(track.href),
+          {
+            headers: Object.keys(trackHeaders).length ? trackHeaders : undefined
+          }
+        );
         if (!response.ok) {
-          throw new Error(`Failed to load audio track (${response.status})`);
+          const detail = await response.text().catch(() => "");
+          throw new Error(
+            `Failed to load audio track (${response.status})${
+              detail ? `: ${detail.slice(0, 240)}` : ""
+            }`
+          );
         }
         const blob = await response.blob();
         objectUrl = URL.createObjectURL(blob);

@@ -94,27 +94,71 @@ export default async function handler(
     body = Buffer.concat(chunks);
   }
 
-  const upstream = await fetch(urlParam, {
-    method: req.method,
-    headers,
-    redirect: "follow",
-    body
-  });
+  try {
+    const upstream = await fetch(urlParam, {
+      method: req.method,
+      headers,
+      redirect: "follow",
+      body
+    });
 
-  res.statusCode = upstream.status;
-  copyHeader(upstream.headers, res, "content-type");
-  copyHeader(upstream.headers, res, "content-length");
-  copyHeader(upstream.headers, res, "content-range");
-  copyHeader(upstream.headers, res, "accept-ranges");
-  copyHeader(upstream.headers, res, "cache-control");
-  copyHeader(upstream.headers, res, "content-disposition");
-  copyHeader(upstream.headers, res, "etag");
+    res.statusCode = upstream.status;
+    copyHeader(upstream.headers, res, "content-type");
+    copyHeader(upstream.headers, res, "content-length");
+    copyHeader(upstream.headers, res, "content-range");
+    copyHeader(upstream.headers, res, "accept-ranges");
+    copyHeader(upstream.headers, res, "cache-control");
+    copyHeader(upstream.headers, res, "content-disposition");
+    copyHeader(upstream.headers, res, "etag");
 
-  if (req.method === "HEAD" || !upstream.body) {
-    res.end();
-    return;
+    if (!upstream.ok) {
+      const errorText = await upstream.text();
+      console.error("[api/fulfill] upstream non-OK", {
+        method: req.method,
+        url: urlParam,
+        status: upstream.status,
+        hasAuth: Boolean(readerAuth),
+        accept: req.headers.accept,
+        bodySnippet: errorText.slice(0, 300)
+      });
+      res.end(errorText);
+      return;
+    }
+
+    if (req.method === "HEAD" || !upstream.body) {
+      res.end();
+      return;
+    }
+
+    const bodyStream = Readable.fromWeb(upstream.body as any);
+    bodyStream.on("error", streamError => {
+      console.error("[api/fulfill] stream error", {
+        method: req.method,
+        url: urlParam,
+        hasAuth: Boolean(readerAuth),
+        accept: req.headers.accept,
+        message:
+          streamError instanceof Error
+            ? streamError.message
+            : "Unknown stream error"
+      });
+      if (!res.headersSent) {
+        res.status(502).end("Failed to stream upstream response.");
+      } else {
+        res.end();
+      }
+    });
+    bodyStream.pipe(res);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch upstream resource.";
+    console.error("[api/fulfill] upstream fetch error", {
+      method: req.method,
+      url: urlParam,
+      hasAuth: Boolean(readerAuth),
+      accept: req.headers.accept,
+      message
+    });
+    res.status(502).end(message);
   }
-
-  const bodyStream = Readable.fromWeb(upstream.body as any);
-  bodyStream.pipe(res);
 }
