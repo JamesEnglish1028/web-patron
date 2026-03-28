@@ -11,6 +11,7 @@ import {
 import Button from "components/Button";
 import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
+import { isPalaceManagerLikeUrl } from "utils/fulfill";
 
 type AudioBookmark = {
   id: string;
@@ -206,7 +207,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           // Palace/local-CM can briefly return cannot-fulfill-loan immediately
           // after borrow while provider state is still syncing.
           if (
-            isLocalCmUrl(url) &&
+            (isLocalCmUrl(url) || isPalaceManagerLikeUrl(url)) &&
             isFulfillUrl(url) &&
             isCannotFulfillLoanError(response.status, detail)
           ) {
@@ -240,6 +241,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           response.headers.get("content-type")?.toLowerCase() || "";
         let manifestText: string;
         let manifestUrl = url;
+        let bearerAccessToken: string | null = null;
 
         if (
           responseContentType.includes(
@@ -248,21 +250,21 @@ const AudioReader: React.FC<AudioReaderProps> = ({
         ) {
           // Two-step auth: extract token and location from bearer-token document
           const bearerTokenData = await response.json();
-          const accessToken =
-            bearerTokenData.access_token || bearerTokenData.accessToken;
+          bearerAccessToken =
+            bearerTokenData.access_token || bearerTokenData.accessToken || null;
           const location = bearerTokenData.location;
 
-          if (!accessToken || !location) {
+          if (!bearerAccessToken || !location) {
             throw new Error(
               "Bearer-token document missing accessToken or location"
             );
           }
 
-          // Cache the extracted token for track fetches
+          // Cache the extracted token for the manifest URL itself
           try {
             sessionStorage.setItem(
               `reader:audio:token:${location}`,
-              accessToken
+              bearerAccessToken
             );
           } catch {
             // ignore storage errors
@@ -272,7 +274,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           manifestUrl = location;
           const manifestRequest = buildReaderRequest(
             manifestUrl,
-            `Bearer ${accessToken}`,
+            `Bearer ${bearerAccessToken}`,
             contentType || "application/audiobook+json"
           );
           response = await fetch(manifestRequest.url, {
@@ -297,6 +299,20 @@ const AudioReader: React.FC<AudioReaderProps> = ({
         if (!active) return;
         const parsed = parseAudiobookManifest(manifestText, manifestUrl);
         setManifest(parsed);
+
+        // Cache bearer token for every track so track fetches use correct auth
+        if (bearerAccessToken) {
+          try {
+            for (const t of parsed.tracks) {
+              sessionStorage.setItem(
+                `reader:audio:token:${t.href}`,
+                bearerAccessToken
+              );
+            }
+          } catch {
+            // ignore storage errors
+          }
+        }
 
         try {
           const raw = localStorage.getItem(storageKey);
@@ -367,6 +383,50 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     }
   }, [bookmarks, bookmarksKey]);
 
+  // Re-fetches the fulfillment URL to obtain a fresh bearer token and
+  // re-caches it for all tracks. Called on 401/403 during track load.
+  const refreshBearerToken = React.useCallback(async (): Promise<string | null> => {
+    try {
+      const req = buildReaderRequest(url, authToken);
+      const resp = await fetch(req.url, { headers: req.headers });
+      if (!resp.ok) return null;
+      const ct = resp.headers.get("content-type")?.toLowerCase() || "";
+      if (!ct.includes("application/vnd.librarysimplified.bearer-token+json")) {
+        return null;
+      }
+      const data = await resp.json();
+      const freshToken: string = data.access_token || data.accessToken || "";
+      const freshLocation: string = data.location || "";
+      if (!freshToken || !freshLocation) return null;
+
+      // Re-fetch the manifest to get the updated set of track URLs for caching
+      const manifestReq = buildReaderRequest(
+        freshLocation,
+        `Bearer ${freshToken}`,
+        contentType || "application/audiobook+json"
+      );
+      const manifestResp = await fetch(manifestReq.url, {
+        headers: manifestReq.headers
+      });
+      if (!manifestResp.ok) return null;
+
+      const manifestText = await manifestResp.text();
+      const freshManifest = parseAudiobookManifest(manifestText, freshLocation);
+
+      try {
+        for (const t of freshManifest.tracks) {
+          sessionStorage.setItem(`reader:audio:token:${t.href}`, freshToken);
+        }
+      } catch {
+        // ignore storage errors
+      }
+
+      return freshToken;
+    } catch {
+      return null;
+    }
+  }, [url, authToken, contentType]);
+
   React.useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
@@ -413,6 +473,28 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           }
         );
         if (!response.ok) {
+          // On 401/403, attempt a bearer-token refresh and retry once.
+          if (response.status === 401 || response.status === 403) {
+            const freshToken = await refreshBearerToken();
+            if (freshToken) {
+              const retryHeaders: Record<string, string> = localCm
+                ? { Authorization: `Bearer ${freshToken}` }
+                : { "X-Reader-Authorization": `Bearer ${freshToken}` };
+              const retryResponse = await fetch(
+                localCm
+                  ? toBrowserFetchUrl(track.href)
+                  : getProxiedUrl(track.href),
+                { headers: retryHeaders }
+              );
+              if (retryResponse.ok) {
+                const blob = await retryResponse.blob();
+                objectUrl = URL.createObjectURL(blob);
+                if (!active) return;
+                setTrackUrl(objectUrl);
+                return;
+              }
+            }
+          }
           const detail = await response.text().catch(() => "");
           throw new Error(
             `Failed to load audio track (${response.status})${
@@ -440,7 +522,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [manifest, trackIndex, authToken, setLoading]);
+  }, [manifest, trackIndex, authToken, setLoading, refreshBearerToken]);
 
   React.useEffect(() => {
     if (audioRef.current) {

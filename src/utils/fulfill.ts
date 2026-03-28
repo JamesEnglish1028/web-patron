@@ -65,7 +65,7 @@ export type SupportedFulfillment =
 
 export type AnyFullfillment = SupportedFulfillment | UnsupportedFulfillment;
 
-const isPalaceManagerLikeUrl = (value: string) => {
+export const isPalaceManagerLikeUrl = (value: string) => {
   try {
     const hostname = new URL(value).hostname.toLowerCase();
     return (

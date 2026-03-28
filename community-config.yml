@@ -26,7 +26,12 @@ media_support:
   # AxisNow document (read online in Webpub Viewer) - not supported in community version
   # application/vnd.librarysimplified.axisnow+json: show
   # Audiobooks
+  # To enable in-app Palace audiobook playback, change the Palace types below
+  # from "redirect" to "show". Requires Palace Manager with audiobook fulfillment
+  # support and a patron auth flow that issues bearer tokens.
+  # Overdrive and Findaway audiobooks remain unsupported for in-app playback.
   application/audiobook+json: redirect
+  application/audiobook+lcp: redirect
   application/vnd.overdrive.circulation.api+json;profile=audiobook: redirect
   application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": redirect
   application/vnd.librarysimplified.findaway.license+json: redirect
@@ -41,9 +46,14 @@ media_support:
     application/epub+zip: redirect-and-show
 
   # Bearer Token Exchange
+  # To enable Palace audiobook playback, add "show" entries here alongside the
+  # direct type entries above (both must be changed together).
   application/vnd.librarysimplified.bearer-token+json:
     application/pdf: show
     application/epub+zip: show
+    # application/audiobook+json: show
+    # application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+    # application/audiobook+lcp: show
 
 # defines the companion app for the instance. Can be "simplye" or "openebooks"
 # default is "simplye"
