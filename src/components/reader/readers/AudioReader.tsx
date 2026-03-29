@@ -227,6 +227,10 @@ const AudioReader: React.FC<AudioReaderProps> = ({
               !response.ok &&
               isCannotFulfillLoanError(response.status, detail)
             ) {
+              const getResponseBeforePost = response;
+              const getDetailBeforePost = detail;
+              let postUnsupported = false;
+
               for (const waitMs of [0, 700, 1500]) {
                 if (waitMs > 0) await sleep(waitMs);
                 const postAttempt = await fetch(initialRequest.url, {
@@ -239,8 +243,33 @@ const AudioReader: React.FC<AudioReaderProps> = ({
                 }
                 detail = await postAttempt.text().catch(() => "");
                 response = postAttempt;
+                if (postAttempt.status === 405) {
+                  // Provider does not allow POST fulfill; continue with GET flow.
+                  postUnsupported = true;
+                  break;
+                }
                 if (!isCannotFulfillLoanError(postAttempt.status, detail)) {
                   break;
+                }
+              }
+
+              if (postUnsupported) {
+                response = getResponseBeforePost;
+                detail = getDetailBeforePost;
+                for (const waitMs of [1100, 2200]) {
+                  await sleep(waitMs);
+                  const getRetry = await fetch(initialRequest.url, {
+                    headers: initialRequest.headers
+                  });
+                  if (getRetry.ok) {
+                    response = getRetry;
+                    break;
+                  }
+                  detail = await getRetry.text().catch(() => "");
+                  response = getRetry;
+                  if (!isCannotFulfillLoanError(getRetry.status, detail)) {
+                    break;
+                  }
                 }
               }
             }
