@@ -273,6 +273,29 @@ const AudioReader: React.FC<AudioReaderProps> = ({
                 }
               }
             }
+
+            // Local Palace development environments can take longer to promote
+            // a just-borrowed loan into a fulfillable audiobook manifest.
+            if (
+              !response.ok &&
+              isCannotFulfillLoanError(response.status, detail)
+            ) {
+              for (const waitMs of [1800, 2500, 3200, 4200, 5200]) {
+                await sleep(waitMs);
+                const getRetry = await fetch(initialRequest.url, {
+                  headers: initialRequest.headers
+                });
+                if (getRetry.ok) {
+                  response = getRetry;
+                  break;
+                }
+                detail = await getRetry.text().catch(() => "");
+                response = getRetry;
+                if (!isCannotFulfillLoanError(getRetry.status, detail)) {
+                  break;
+                }
+              }
+            }
           }
 
           if (response.ok) {
