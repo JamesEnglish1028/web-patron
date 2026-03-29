@@ -211,7 +211,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
             isFulfillUrl(url) &&
             isCannotFulfillLoanError(response.status, detail)
           ) {
-            for (const waitMs of [400, 900, 1500]) {
+            for (const waitMs of [400, 900, 1500, 2400]) {
               await sleep(waitMs);
               response = await fetch(initialRequest.url, {
                 headers: initialRequest.headers
@@ -219,6 +219,30 @@ const AudioReader: React.FC<AudioReaderProps> = ({
               if (response.ok) break;
               detail = await response.text().catch(() => "");
               if (!isCannotFulfillLoanError(response.status, detail)) break;
+            }
+
+            // Some providers require POST for fulfill, even when GET keeps
+            // returning cannot-fulfill-loan while syncing.
+            if (
+              !response.ok &&
+              isCannotFulfillLoanError(response.status, detail)
+            ) {
+              for (const waitMs of [0, 700, 1500]) {
+                if (waitMs > 0) await sleep(waitMs);
+                const postAttempt = await fetch(initialRequest.url, {
+                  method: "POST",
+                  headers: initialRequest.headers
+                });
+                if (postAttempt.ok) {
+                  response = postAttempt;
+                  break;
+                }
+                detail = await postAttempt.text().catch(() => "");
+                response = postAttempt;
+                if (!isCannotFulfillLoanError(postAttempt.status, detail)) {
+                  break;
+                }
+              }
             }
           }
 
