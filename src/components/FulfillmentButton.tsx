@@ -20,7 +20,9 @@ import useError from "hooks/useError";
 import useLinkUtils from "hooks/useLinkUtils";
 import { navigateToUrl, navigateWindowToUrl } from "utils/navigation";
 import { storeReaderAuth } from "utils/readerAuth";
+import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
+import { isPalaceManagerLikeUrl } from "utils/fulfill";
 import Stack from "./Stack";
 
 const sleep = (ms: number) =>
@@ -28,38 +30,57 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const isLocalCmFulfillUrl = (url: string) => {
+const isLocalCmUrl = (url: string) => {
   try {
     const parsed = new URL(url);
     return (
       parsed.protocol === "http:" &&
-      ["localhost:6500", "127.0.0.1:6500", "[::1]:6500"].includes(
-        parsed.host
-      ) &&
-      parsed.pathname.includes("/fulfill/")
+      ["localhost:6500", "127.0.0.1:6500", "[::1]:6500"].includes(parsed.host)
     );
   } catch {
     return false;
   }
 };
 
+const isPalaceFulfillUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.includes("/fulfill/") && isPalaceManagerLikeUrl(url);
+  } catch {
+    return false;
+  }
+};
+
+const buildPalaceRequest = (url: string, authToken?: string) => {
+  const localCm = isLocalCmUrl(url);
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    if (localCm) {
+      headers.Authorization = authToken;
+    } else {
+      headers["X-Reader-Authorization"] = authToken;
+    }
+  }
+
+  return {
+    url: localCm ? toBrowserFetchUrl(url) : getProxiedUrl(url),
+    headers: Object.keys(headers).length ? headers : undefined
+  };
+};
+
 async function waitForAudiobookFulfillmentReady(
   fulfillUrl: string,
   authToken?: string
 ): Promise<boolean> {
-  if (!isLocalCmFulfillUrl(fulfillUrl)) return true;
+  if (!isPalaceFulfillUrl(fulfillUrl)) return true;
 
-  const endpoint = toBrowserFetchUrl(fulfillUrl);
-  const headers: Record<string, string> = {};
-  if (authToken) {
-    headers.Authorization = authToken;
-  }
+  const request = buildPalaceRequest(fulfillUrl, authToken);
 
   for (const waitMs of [0, 500, 1200, 2500]) {
     if (waitMs > 0) await sleep(waitMs);
-    const response = await fetch(endpoint, {
+    const response = await fetch(request.url, {
       method: "HEAD",
-      headers: Object.keys(headers).length ? headers : undefined
+      headers: request.headers
     });
 
     if (response.ok) return true;
@@ -84,7 +105,7 @@ async function findLatestAudiobookFulfillUrlFromLoans(
   authToken?: string,
   titleHint?: string
 ): Promise<string | null> {
-  if (!isLocalCmFulfillUrl(currentFulfillUrl)) return null;
+  if (!isPalaceFulfillUrl(currentFulfillUrl)) return null;
 
   let loansUrl: string;
   try {
@@ -97,17 +118,18 @@ async function findLatestAudiobookFulfillUrlFromLoans(
     return null;
   }
 
-  const headers: Record<string, string> = {
+  const requestHeaders: Record<string, string> = {
     Accept:
       "application/atom+xml;profile=opds-catalog, application/xml, text/xml, */*"
   };
-  if (authToken) {
-    headers.Authorization = authToken;
+  const request = buildPalaceRequest(loansUrl, authToken);
+  if (request.headers) {
+    Object.assign(requestHeaders, request.headers);
   }
 
-  const response = await fetch(toBrowserFetchUrl(loansUrl), {
+  const response = await fetch(request.url, {
     method: "GET",
-    headers
+    headers: requestHeaders
   });
   if (!response.ok) return null;
 
