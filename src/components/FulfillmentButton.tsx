@@ -46,8 +46,8 @@ const isLocalCmFulfillUrl = (url: string) => {
 async function waitForAudiobookFulfillmentReady(
   fulfillUrl: string,
   authToken?: string
-) {
-  if (!isLocalCmFulfillUrl(fulfillUrl)) return;
+): Promise<boolean> {
+  if (!isLocalCmFulfillUrl(fulfillUrl)) return true;
 
   const endpoint = toBrowserFetchUrl(fulfillUrl);
   const headers: Record<string, string> = {};
@@ -62,17 +62,21 @@ async function waitForAudiobookFulfillmentReady(
       headers: Object.keys(headers).length ? headers : undefined
     });
 
-    if (response.ok) return;
+    if (response.ok) return true;
 
     const status = response.status;
+    if (status === 401 || status === 403 || status === 404 || status === 405) {
+      // Don't block opening when HEAD isn't authorized/supported.
+      return true;
+    }
     if (status !== 500 && status !== 502 && status !== 503) {
-      throw new Error(`Audiobook fulfill check failed (${status}).`);
+      // Let the reader attempt fulfillment for any non-transient status.
+      return true;
     }
   }
 
-  throw new Error(
-    "This audiobook loan is still syncing with the provider. Please try again in a few seconds."
-  );
+  // Still syncing after retries; proceed and let AudioReader retry in context.
+  return false;
 }
 
 async function findLatestAudiobookFulfillUrlFromLoans(
@@ -315,20 +319,24 @@ const ReadOnlineInternal: React.FC<{
           OPDS1.LcpAudioBookMediaType
         ].includes(details.contentType as OPDS1.AnyBookMediaType)
       ) {
-        try {
-          await waitForAudiobookFulfillmentReady(resolved.url, resolved.token);
-        } catch (error) {
+        const ready = await waitForAudiobookFulfillmentReady(
+          resolved.url,
+          resolved.token
+        );
+        if (!ready) {
           const refreshedFulfillUrl =
             await findLatestAudiobookFulfillUrlFromLoans(
               resolved.url,
               resolved.token,
               title
             );
-          if (!refreshedFulfillUrl) {
-            throw error;
+          if (refreshedFulfillUrl) {
+            resolved = { ...resolved, url: refreshedFulfillUrl };
+            await waitForAudiobookFulfillmentReady(
+              resolved.url,
+              resolved.token
+            );
           }
-          resolved = { ...resolved, url: refreshedFulfillUrl };
-          await waitForAudiobookFulfillmentReady(resolved.url, resolved.token);
         }
       }
       const authKey = resolved.token
