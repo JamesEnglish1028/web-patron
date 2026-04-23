@@ -88,6 +88,8 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
         onChange={e => setValue(e.target.value)}
         sx={{
           borderRight: "none",
+          borderTopLeftRadius: "button",
+          borderBottomLeftRadius: "button",
           borderTopRightRadius: 0,
           borderBottomRightRadius: 0
         }}

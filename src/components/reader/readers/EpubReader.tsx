@@ -115,6 +115,7 @@ type EpubBookLike = {
       spread: "auto" | "none";
     }
   ) => EpubRenditionLike;
+  coverUrl?: () => Promise<string> | string;
   destroy?: () => void;
 };
 
@@ -297,6 +298,13 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         const metadata = (await book.loaded?.metadata) || {};
         const titleFromBook = normalize(metadata?.title || metadata?.["dc:title"] || "");
         if (titleFromBook) setMetadataTitle(titleFromBook);
+        let coverUrl = "";
+        try {
+          const cover = await book.coverUrl?.();
+          coverUrl = normalize(typeof cover === "string" ? cover : "");
+        } catch {
+          // ignore cover extraction failures
+        }
         if (readerInfo?.setBookInfo) {
           readerInfo.setBookInfo({
             title: titleFromBook || title || "",
@@ -307,7 +315,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             rights: normalize(metadata?.rights || metadata?.["dc:rights"]),
             description: normalize(metadata?.description || metadata?.["dc:description"]),
             language: normalize(metadata?.language || metadata?.["dc:language"]),
-            subjects: normalize(metadata?.["dc:subject"])
+            subjects: normalize(metadata?.["dc:subject"]),
+            coverUrl
           });
         }
 
@@ -584,6 +593,11 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     [citations]
   );
 
+  const bookmarkActive = React.useMemo(
+    () => Boolean(currentCfi && bookmarks.some(entry => entry.cfi === currentCfi)),
+    [bookmarks, currentCfi]
+  );
+
   const leftControls = (
     <Stack spacing={2}>
       {readerInfo?.backControl}
@@ -593,9 +607,10 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         iconLeft={Info}
         onClick={readerInfo?.toggleInfo}
         ref={readerInfo?.infoButtonRef}
-      >
-        Info
-      </Button>
+        aria-label="Information"
+        title="Information"
+        sx={iconOnlyControlButtonSx}
+      />
     </Stack>
   );
 
@@ -630,6 +645,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             onToggleSearch={() => setShowSearch(prev => !prev)}
             onToggleTheme={() => setShowDisplay(prev => !prev)}
             onAddBookmark={addBookmark}
+            bookmarkActive={bookmarkActive}
             tocActive={showToc}
             searchActive={showSearch}
             displayActive={showDisplay}
@@ -971,13 +987,13 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         <Box
           as="button"
           onClick={() => renditionRef.current?.prev?.()}
-          aria-label="Previous"
+          aria-label="previous page"
           sx={edgeButtonStyles.left}
         />
         <Box
           as="button"
           onClick={() => renditionRef.current?.next?.()}
-          aria-label="Next"
+          aria-label="Next Page"
           sx={edgeButtonStyles.right}
         />
 
@@ -986,19 +1002,19 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           color="text"
           iconLeft={ChevronLeft}
           onClick={() => renditionRef.current?.prev?.()}
+          aria-label="previous page"
+          title="previous page"
           sx={floatingNavStyles.left}
-        >
-          Prev
-        </Button>
+        />
         <Button
           variant="ghost"
           color="text"
           iconLeft={ChevronRight}
           onClick={() => renditionRef.current?.next?.()}
+          aria-label="Next Page"
+          title="Next Page"
           sx={floatingNavStyles.right}
-        >
-          Next
-        </Button>
+        />
       </Box>
 
       <Box
@@ -1353,8 +1369,9 @@ const panelStyles: { right: ThemeUIStyleObject; left: ThemeUIStyleObject } = {
   },
   left: {
     position: "absolute",
-    top: 64,
-    left: 16,
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
     width: ["88vw", "400px"],
     maxHeight: "70vh",
     overflow: "hidden",
@@ -1426,5 +1443,16 @@ const floatingNavStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject }
     transform: "translateY(-50%)",
     zIndex: 3,
     opacity: 0.7
+  }
+};
+
+const iconOnlyControlButtonSx: ThemeUIStyleObject = {
+  px: 2,
+  minWidth: 44,
+  "& svg": {
+    width: "1.5em",
+    height: "1.5em",
+    mr: 0,
+    ml: 0
   }
 };

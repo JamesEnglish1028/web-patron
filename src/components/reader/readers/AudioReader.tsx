@@ -196,7 +196,9 @@ const AudioReader: React.FC<AudioReaderProps> = ({
         const initialRequest = buildReaderRequest(
           url,
           authToken,
-          contentType && !isFulfillUrl(url) ? contentType : undefined
+          isFulfillUrl(url)
+            ? "application/vnd.librarysimplified.bearer-token+json, application/audiobook+json;q=0.9, */*;q=0.1"
+            : contentType || undefined
         );
         let response = await fetch(initialRequest.url, {
           headers: initialRequest.headers

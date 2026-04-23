@@ -7,7 +7,8 @@ import { OPDS2 } from "interfaces";
  * variable name used in the template from the semantic meaning of its value.
  */
 export const UriTemplateTerms = {
-  REDIRECT_URI: "http://palaceproject.io/terms/redirect-uri"
+  REDIRECT_URI: "http://palaceproject.io/terms/redirect-uri",
+  PATRON_ID: "http://palaceproject.io/terms/patron-id"
 } as const;
 
 /**

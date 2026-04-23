@@ -93,9 +93,10 @@ export default async function handler(
     : undefined;
 
   try {
+    const forwardHeaders = buildForwardHeaders(req);
     const upstream = await fetch(target.toString(), {
       method: req.method,
-      headers: buildForwardHeaders(req),
+      headers: forwardHeaders,
       body: bodyInit
     });
 

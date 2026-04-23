@@ -5,6 +5,8 @@ import List from "icons/List";
 import Settings from "icons/Settings";
 import Search from "icons/Search";
 import Bookmark from "icons/Bookmark";
+import BookmarkFilled from "icons/BookmarkFilled";
+import { ThemeUIStyleObject } from "theme-ui";
 
 type ReaderUtilityControlsProps = {
   onToggleToc?: () => void;
@@ -22,6 +24,7 @@ type ReaderUtilityControlsProps = {
   tocButtonRef?: React.RefObject<HTMLButtonElement>;
   searchButtonRef?: React.RefObject<HTMLButtonElement>;
   displayButtonRef?: React.RefObject<HTMLButtonElement>;
+  bookmarkActive?: boolean;
 };
 
 const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
@@ -39,12 +42,13 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
   buttonColor = "text",
   tocButtonRef,
   searchButtonRef,
-  displayButtonRef
+  displayButtonRef,
+  bookmarkActive = false
 }) => {
   const controls = [
     {
       key: "toc",
-      label: "TOC",
+      ariaLabel: "TOC, Bookmark and Citations",
       icon: List,
       onClick: onToggleToc,
       disabled: disableToc || !onToggleToc,
@@ -53,7 +57,7 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
     },
     {
       key: "search",
-      label: "Search",
+      ariaLabel: "Search",
       icon: Search,
       onClick: onToggleSearch,
       disabled: disableSearch || !onToggleSearch,
@@ -62,15 +66,15 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
     },
     {
       key: "bookmark",
-      label: "Bookmark",
-      icon: Bookmark,
+      ariaLabel: "Bookmark",
+      icon: bookmarkActive ? BookmarkFilled : Bookmark,
       onClick: onAddBookmark,
       disabled: disableBookmark || !onAddBookmark,
-      active: false
+      active: bookmarkActive
     },
     {
       key: "display",
-      label: "Display",
+      ariaLabel: "Display Settings",
       icon: Settings,
       onClick: onToggleTheme,
       disabled: disableTheme || !onToggleTheme,
@@ -85,17 +89,29 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
         <Button
           key={control.key}
           variant={control.active ? "filled" : "ghost"}
-          color={buttonColor}
+          color={control.active ? "brand.primary" : buttonColor}
           iconLeft={control.icon}
           onClick={control.onClick}
           disabled={control.disabled}
           ref={control.ref}
-        >
-          {control.label}
-        </Button>
+          aria-label={control.ariaLabel}
+          title={control.ariaLabel}
+          sx={iconOnlyControlButtonSx}
+        />
       ))}
     </Stack>
   );
 };
 
 export default ReaderUtilityControls;
+
+const iconOnlyControlButtonSx: ThemeUIStyleObject = {
+  px: 2,
+  minWidth: 44,
+  "& svg": {
+    width: "1.5em",
+    height: "1.5em",
+    mr: 0,
+    ml: 0
+  }
+};

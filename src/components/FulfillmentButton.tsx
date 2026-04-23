@@ -5,7 +5,7 @@ import {
   ReadExternalFulfillment,
   ReadInternalFulfillment
 } from "utils/fulfill";
-import { FulfillableBook, OPDS1 } from "interfaces";
+import { AuthCredentials, FulfillableBook, OPDS1 } from "interfaces";
 import track from "analytics/track";
 import SvgDownload from "icons/Download";
 import SvgExternalLink from "icons/ExternalOpen";
@@ -24,6 +24,31 @@ import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { isPalaceManagerLikeUrl } from "utils/fulfill";
 import Stack from "./Stack";
+
+/**
+ * Palace CM fulfill endpoints need the patron's Basic auth credentials
+ * (not the app-session Bearer token) to identify the patron and proxy
+ * the bearer-token request to the content vendor.
+ */
+function getBasicToken(
+  credentials: AuthCredentials | undefined
+): string | undefined {
+  if (
+    credentials?.token &&
+    typeof credentials.token === "object" &&
+    credentials.token.basicToken
+  ) {
+    return credentials.token.basicToken;
+  }
+  // For pure Basic Auth, the token itself is already "Basic xxx"
+  if (
+    typeof credentials?.token === "string" &&
+    credentials.token.startsWith("Basic ")
+  ) {
+    return credentials.token;
+  }
+  return undefined;
+}
 
 const sleep = (ms: number) =>
   new Promise(resolve => {
@@ -75,12 +100,17 @@ async function waitForAudiobookFulfillmentReady(
   if (!isPalaceFulfillUrl(fulfillUrl)) return true;
 
   const request = buildPalaceRequest(fulfillUrl, authToken);
+  const headHeaders = {
+    ...request.headers,
+    Accept:
+      "application/vnd.librarysimplified.bearer-token+json, application/audiobook+json;q=0.9, */*;q=0.1"
+  };
 
   for (const waitMs of [0, 500, 1200, 2500]) {
     if (waitMs > 0) await sleep(waitMs);
     const response = await fetch(request.url, {
       method: "HEAD",
-      headers: request.headers
+      headers: headHeaders
     });
 
     if (response.ok) return true;
@@ -247,7 +277,8 @@ const ReadOnlineExternal: React.FC<{
   trackOpenBookUrl: string | null;
 }> = ({ details, isPrimaryAction, trackOpenBookUrl }) => {
   const { catalogUrl } = useLibraryContext();
-  const { token } = useUser();
+  const { token, patronId, credentials } = useUser();
+  const basicToken = getBasicToken(credentials);
   const [loading, setLoading] = React.useState(false);
   const { error, handleError, clearError } = useError();
 
@@ -272,7 +303,8 @@ const ReadOnlineExternal: React.FC<{
       // provided function
       const { url: externalReaderUrl } = await details.getLocation(
         catalogUrl,
-        token
+        token,
+        { patronId, basicToken }
       );
 
       // we are about to open the book, so send a track event
@@ -323,7 +355,8 @@ const ReadOnlineInternal: React.FC<{
   const router = useRouter();
   const { buildReaderLink } = useLinkUtils();
   const { catalogUrl } = useLibraryContext();
-  const { token } = useUser();
+  const { token, patronId, credentials } = useUser();
+  const basicToken = getBasicToken(credentials);
   const [loading, setLoading] = React.useState(false);
   const { error, handleError, clearError } = useError();
 
@@ -332,7 +365,7 @@ const ReadOnlineInternal: React.FC<{
     clearError();
     try {
       let resolved = details.getLocation
-        ? await details.getLocation(catalogUrl, token)
+        ? await details.getLocation(catalogUrl, token, { patronId, basicToken })
         : { url: details.url, token: undefined };
       if (
         [
@@ -417,14 +450,15 @@ const DownloadButton: React.FC<{
   const [loading, setLoading] = React.useState(false);
   const { error, handleError, clearError } = useError();
   const { catalogUrl } = useLibraryContext();
-  const { token } = useUser();
+  const { token, patronId, credentials } = useUser();
+  const basicToken = getBasicToken(credentials);
 
   async function download() {
     setLoading(true);
     clearError();
     try {
       const { url: downloadUrl, token: downloadToken } =
-        await details.getLocation(catalogUrl, token);
+        await details.getLocation(catalogUrl, token, { patronId, basicToken });
 
       await downloadFile(
         downloadUrl,

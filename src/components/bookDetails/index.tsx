@@ -64,16 +64,18 @@ export const BookDetails: React.FC = () => {
               flexDirection: "column"
             }}
           >
-            <H1 sx={{ m: 0 }}>
-              <ScreenReaderOnly>Book title: </ScreenReaderOnly>
-              {book.title}
-              {book.subtitle && `: ${book.subtitle}`}
-            </H1>
+            <div sx={{ display: "flex", flexDirection: "column", rowGap: 2, mb: 2 }}>
+              <H1 sx={{ m: 0 }}>
+                <ScreenReaderOnly>Book title: </ScreenReaderOnly>
+                {book.title}
+                {book.subtitle && `: ${book.subtitle}`}
+              </H1>
 
-            <Text variant="text.callouts.regular">
-              by&nbsp;
-              {getAuthors(book)?.join(", ") ?? "Unknown"}
-            </Text>
+              <Text variant="text.callouts.regular">
+                by&nbsp;
+                {getAuthors(book)?.join(", ") ?? "Unknown"}
+              </Text>
+            </div>
             {APP_CONFIG.showMedium && <MediumIndicator book={book} />}
             <FulfillmentCard book={book} sx={{ mt: 3 }} />
             <Summary book={book} />

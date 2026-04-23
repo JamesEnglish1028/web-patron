@@ -166,6 +166,14 @@ function buildFulfillmentLink(feedUrl: string) {
   return (link: OPDSAcquisitionLink): FulfillmentLink => {
     const { contentType, indirectionType } = parseFormat(link);
     const supportLevel = getAppSupportLevel(contentType, indirectionType);
+    const templated = Boolean((link as any).templated ?? (link as any).template);
+    const uriTemplateVariables =
+      templated && (link as any).properties?.uri_template_variables?.map
+        ? ((link as any).properties.uri_template_variables.map as Record<
+            string,
+            { term: string; required?: boolean }
+          >)
+        : undefined;
     return {
       supportLevel,
       url: resolve(feedUrl, link.href),
@@ -176,7 +184,8 @@ function buildFulfillmentLink(feedUrl: string) {
           | typeof OPDS1.IncorrectAdobeDrmMediaType
       ),
       rel: link.rel,
-      templated: Boolean((link as any).templated ?? (link as any).template)
+      templated,
+      ...(uriTemplateVariables ? { uriTemplateVariables } : {})
     };
   };
 }

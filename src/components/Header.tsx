@@ -10,7 +10,7 @@ import { AccountMenu } from "./AccountMenu";
 import useUser from "components/context/UserContext";
 import useLogin from "auth/useLogin";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBook } from "@fortawesome/free-solid-svg-icons";
+import { faBook, faGlobe } from "@fortawesome/free-solid-svg-icons";
 import type { ThemeUIStyleObject } from "theme-ui";
 
 const MyBooksIcon: React.FC<{
@@ -19,6 +19,15 @@ const MyBooksIcon: React.FC<{
 }> = ({ className, sx }) => (
   <span className={className} sx={sx}>
     <FontAwesomeIcon icon={faBook} />
+  </span>
+);
+
+const LibraryWebsiteIcon: React.FC<{
+  className?: string;
+  sx?: ThemeUIStyleObject;
+}> = ({ className, sx }) => (
+  <span className={className} sx={sx}>
+    <FontAwesomeIcon icon={faGlobe} />
   </span>
 );
 
@@ -75,7 +84,6 @@ const HeaderFC: React.FC<{ className?: string }> = ({ className }) => {
 
 const HeaderLinks: React.FC<{ library: LibraryData }> = ({ library }) => {
   const { helpWebsite, libraryWebsite } = library.libraryLinks;
-  const libraryName = library.catalogName;
   const { isAuthenticated, isLoading } = useUser();
   const { baseLoginUrl } = useLogin();
 
@@ -113,10 +121,11 @@ const HeaderLinks: React.FC<{ library: LibraryData }> = ({ library }) => {
           variant="ghost"
           color="ui.black"
           href={libraryWebsite.href}
-          title="help"
+          title="Library Website"
+          iconLeft={LibraryWebsiteIcon}
           sx={{ whiteSpace: "initial" }}
         >
-          {libraryWebsite.title ?? `${libraryName} Home`}
+          Library Website
         </AnchorButton>
       )}
       <NavButton

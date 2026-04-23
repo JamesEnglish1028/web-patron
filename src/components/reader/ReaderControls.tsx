@@ -49,18 +49,18 @@ const ReaderControls: React.FC<ReaderControlsProps> = ({
             iconLeft={ChevronLeft}
             onClick={onPrev}
             disabled={!canPrev || !onPrev}
-          >
-            Prev
-          </Button>
+            aria-label="previous page"
+            title="previous page"
+          />
           <Button
             variant="ghost"
             color="text"
             iconLeft={ChevronRight}
             onClick={onNext}
             disabled={!canNext || !onNext}
-          >
-            Next
-          </Button>
+            aria-label="Next Page"
+            title="Next Page"
+          />
         </>
       )}
       {!hideAdjustControls && (

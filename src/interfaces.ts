@@ -157,6 +157,7 @@ export type FulfillmentLink = {
   supportLevel: MediaSupportLevel;
   rel?: string | string[];
   templated?: boolean;
+  uriTemplateVariables?: Record<string, { term: string; required?: boolean }>;
 };
 
 export type AudioBookMedium = "http://bib.schema.org/Audiobook";

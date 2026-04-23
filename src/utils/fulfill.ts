@@ -11,6 +11,7 @@ import { DownloadMediaType, ReadOnlineMediaType } from "types/opds1";
 import { bookIsAudiobook } from "utils/book";
 import { APP_CONFIG } from "utils/env";
 import { typeMap } from "utils/file";
+import { expandTemplatedUri, UriTemplateTerms } from "utils/opds";
 
 /**
  * Fulfilling a book requires a couple pieces of information:
@@ -86,6 +87,12 @@ export const getFulfillmentFromLink =
   (link: FulfillmentLink): AnyFullfillment => {
     const { contentType, indirectionType, supportLevel } = link;
     const action = bookIsAudiobook(book) ? "Listen" : "Read";
+    const linkTemplateData = link.templated
+      ? {
+          templated: link.templated,
+          uriTemplateVariables: link.uriTemplateVariables
+        }
+      : undefined;
 
     // don't show fulfillment option if it is unsupported or only allows
     // a redirect to the companion app.
@@ -125,7 +132,8 @@ export const getFulfillmentFromLink =
             getLocation: constructGetLocation(
               indirectionType,
               contentType,
-              link.url
+              link.url,
+              linkTemplateData
             )
           };
         }
@@ -135,7 +143,8 @@ export const getFulfillmentFromLink =
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           ),
           type: "download",
           buttonLabel: `Download Adobe ${typeName}`,
@@ -154,7 +163,8 @@ export const getFulfillmentFromLink =
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           )
         };
       }
@@ -166,7 +176,8 @@ export const getFulfillmentFromLink =
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           ),
           type: "download",
           buttonLabel: `Download ${typeName}`,
@@ -182,7 +193,8 @@ export const getFulfillmentFromLink =
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           ),
           contentType: contentType as ReadOnlineMediaType,
           buttonLabel: `${action} Online`
@@ -231,25 +243,85 @@ function isSupported(
  */
 type GetLocationWithIndirection = (
   catalogUrl: string,
-  token?: string
+  token?: string,
+  options?: { patronId?: string; basicToken?: string }
 ) => Promise<AuthorizedLocation>;
+
+/**
+ * Expand a templated fulfillment URL using the patron's identifier.
+ * When a uri_template_variables map is present the expansion is driven by
+ * term-URI lookups; otherwise common variable names (patronId, patron_id,
+ * barcode, etc.) are tried as fallbacks.
+ */
+function expandFulfillmentUrl(
+  url: string,
+  templated: boolean | undefined,
+  uriTemplateVariables:
+    | Record<string, { term: string; required?: boolean }>
+    | undefined,
+  patronId?: string
+): string {
+  if (!templated || !patronId) return url;
+  try {
+    return expandTemplatedUri(url, uriTemplateVariables ?? {}, {
+      termValues: {
+        [UriTemplateTerms.PATRON_ID]: patronId
+      },
+      fallbacks: {
+        patronId,
+        // eslint-disable-next-line camelcase
+        patron_id: patronId,
+        barcode: patronId,
+        username: patronId,
+        // eslint-disable-next-line camelcase
+        authorization_identifier: patronId
+      }
+    });
+  } catch {
+    // If expansion fails (e.g. a required variable has no value), return the
+    // original URL so existing non-templated flows are not disrupted.
+    return url;
+  }
+}
+
 const constructGetLocation =
   (
     indirectionType: OPDS1.IndirectAcquisitionType | undefined,
     contentType: OPDS1.AnyBookMediaType,
-    url: string
+    url: string,
+    linkTemplateData?: {
+      templated?: boolean;
+      uriTemplateVariables?: Record<
+        string,
+        { term: string; required?: boolean }
+      >;
+    }
   ): GetLocationWithIndirection =>
-  async (catalogUrl: string, token?: string) => {
+  async (
+    catalogUrl: string,
+    token?: string,
+    options?: { patronId?: string; basicToken?: string }
+  ) => {
+    const resolvedUrl = expandFulfillmentUrl(
+      url,
+      linkTemplateData?.templated,
+      linkTemplateData?.uriTemplateVariables,
+      options?.patronId
+    );
     /**
      * If there is OPDS Entry Indirection, we fetch the actual link
      * from within an entry
      */
     if (indirectionType === OPDS1.OPDSEntryMediaType) {
-      const book = (await fetchBook(url, catalogUrl, token)) as FulfillableBook;
-      const resolvedUrl = book.fulfillmentLinks?.find(
+      const book = (await fetchBook(
+        resolvedUrl,
+        catalogUrl,
+        token
+      )) as FulfillableBook;
+      const entryUrl = book.fulfillmentLinks?.find(
         link => link.contentType === contentType
       )?.url;
-      if (!resolvedUrl) {
+      if (!entryUrl) {
         throw new ApplicationError({
           title: "OPDS Error",
           detail:
@@ -257,13 +329,18 @@ const constructGetLocation =
         });
       }
       return {
-        url: resolvedUrl,
+        url: entryUrl,
         token
       };
     }
 
     if (indirectionType === OPDS1.BearerTokenMediaType) {
-      const bearerToken = await fetchBearerToken(url, token, {
+      // Palace CM needs the patron's Basic credentials to identify them
+      // and proxy the bearer-token request to the content vendor.
+      const cmAuth = isPalaceManagerLikeUrl(resolvedUrl)
+        ? options?.basicToken || token
+        : token;
+      const bearerToken = await fetchBearerToken(resolvedUrl, cmAuth, {
         Accept: OPDS1.BearerTokenMediaType
       });
       const tokenType = bearerToken.token_type || "Bearer";
@@ -283,15 +360,15 @@ const constructGetLocation =
         OPDS1.LcpAudioBookMediaType
       ].includes(contentType)
     ) {
-      if (isPalaceManagerLikeUrl(url)) {
+      if (isPalaceManagerLikeUrl(resolvedUrl)) {
         return {
-          url,
-          token
+          url: resolvedUrl,
+          token: options?.basicToken || token
         };
       }
 
       try {
-        const bearerToken = await fetchBearerToken(url, token, {
+        const bearerToken = await fetchBearerToken(resolvedUrl, token, {
           Accept: OPDS1.BearerTokenMediaType
         });
         if (bearerToken?.location && bearerToken?.access_token) {
@@ -304,7 +381,7 @@ const constructGetLocation =
       } catch {
         try {
           const audiobookEntry = (await fetchBook(
-            url,
+            resolvedUrl,
             catalogUrl,
             token
           )) as FulfillableBook;
@@ -347,7 +424,7 @@ const constructGetLocation =
 
     // otherwise there is no indirection, just return the url and token.
     return {
-      url,
+      url: resolvedUrl,
       token
     };
   };

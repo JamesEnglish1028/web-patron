@@ -32,6 +32,29 @@ const FacetSelector: React.FC<{
 
   const { label, facets } = facetGroup;
 
+  const displayFacetLabel = (facetLabel: string) => {
+    return facetLabel.trim().toLowerCase() === "books"
+      ? "Ebooks"
+      : facetLabel;
+  };
+
+  const facetSortOrder: Record<string, number> = {
+    all: 0,
+    ebooks: 1,
+    books: 1,
+    audiobooks: 2,
+    periodicals: 3
+  };
+
+  const orderedFacets = React.useMemo(() => {
+    return [...facets].sort((a, b) => {
+      const aRank = facetSortOrder[a.label.trim().toLowerCase()] ?? 999;
+      const bRank = facetSortOrder[b.label.trim().toLowerCase()] ?? 999;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.label.localeCompare(b.label);
+    });
+  }, [facets]);
+
   const activeFacet = facets.find(facet => !!facet.active);
 
   const handleChange = (e: React.FormEvent<HTMLSelectElement>) => {
@@ -56,9 +79,9 @@ const FacetSelector: React.FC<{
         onBlur={handleChange}
         onChange={handleChange}
       >
-        {facets.map(facet => (
+        {orderedFacets.map(facet => (
           <option key={facet.label} value={facet.label}>
-            {facet.label}
+            {displayFacetLabel(facet.label)}
           </option>
         ))}
       </Select>

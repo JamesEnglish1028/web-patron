@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { Dialog, DialogDismiss } from "@ariakit/react";
+import { Dialog } from "@ariakit/react";
 import Button from "components/Button";
 import LoadingIndicator from "components/LoadingIndicator";
 import { Box, Container, type ThemeUIStyleObject } from "theme-ui";
-import ChevronLeft from "icons/ChevronLeft";
+import Close from "icons/Close";
 import { Text } from "components/Text";
 import Stack from "components/Stack";
 
@@ -134,12 +134,15 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
     });
 
   const backControl = (
-    <DialogDismiss
-      render={
-        <Button variant="ghost" color="text" iconLeft={ChevronLeft} size="sm">
-          Back
-        </Button>
-      }
+    <Button
+      variant="ghost"
+      color="text"
+      iconLeft={Close}
+      size="sm"
+      aria-label="Close"
+      title="Close"
+      onClick={close}
+      sx={iconOnlyControlButtonSx}
     />
   );
 
@@ -376,3 +379,14 @@ const ReaderWrapper = ({ children }: ReaderWrapperProps) => {
 };
 
 export default ReaderWrapper;
+
+const iconOnlyControlButtonSx: ThemeUIStyleObject = {
+  px: 2,
+  minWidth: 44,
+  "& svg": {
+    width: "1.5em",
+    height: "1.5em",
+    mr: 0,
+    ml: 0
+  }
+};
