@@ -463,7 +463,9 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
   // Re-fetches the fulfillment URL to obtain a fresh bearer token and
   // re-caches it for all tracks. Called on 401/403 during track load.
-  const refreshBearerToken = React.useCallback(async (): Promise<string | null> => {
+  const refreshBearerToken = React.useCallback(async (): Promise<
+    string | null
+  > => {
     try {
       const req = buildReaderRequest(url, authToken);
       const resp = await fetch(req.url, { headers: req.headers });

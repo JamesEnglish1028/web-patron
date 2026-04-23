@@ -5,6 +5,14 @@ import { CollectionData, FacetGroupData } from "interfaces";
 import FormLabel from "components/form/FormLabel";
 import useLinkUtils from "hooks/useLinkUtils";
 
+const facetSortOrder: Record<string, number> = {
+  all: 0,
+  ebooks: 1,
+  books: 1,
+  audiobooks: 2,
+  periodicals: 3
+};
+
 const ListFilters: React.FC<{ collection: CollectionData }> = ({
   collection
 }) => {
@@ -33,17 +41,7 @@ const FacetSelector: React.FC<{
   const { label, facets } = facetGroup;
 
   const displayFacetLabel = (facetLabel: string) => {
-    return facetLabel.trim().toLowerCase() === "books"
-      ? "Ebooks"
-      : facetLabel;
-  };
-
-  const facetSortOrder: Record<string, number> = {
-    all: 0,
-    ebooks: 1,
-    books: 1,
-    audiobooks: 2,
-    periodicals: 3
+    return facetLabel.trim().toLowerCase() === "books" ? "Ebooks" : facetLabel;
   };
 
   const orderedFacets = React.useMemo(() => {

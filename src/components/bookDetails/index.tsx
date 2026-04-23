@@ -64,7 +64,14 @@ export const BookDetails: React.FC = () => {
               flexDirection: "column"
             }}
           >
-            <div sx={{ display: "flex", flexDirection: "column", rowGap: 2, mb: 2 }}>
+            <div
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                rowGap: 2,
+                mb: 2
+              }}
+            >
               <H1 sx={{ m: 0 }}>
                 <ScreenReaderOnly>Book title: </ScreenReaderOnly>
                 {book.title}

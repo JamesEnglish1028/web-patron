@@ -166,7 +166,9 @@ function buildFulfillmentLink(feedUrl: string) {
   return (link: OPDSAcquisitionLink): FulfillmentLink => {
     const { contentType, indirectionType } = parseFormat(link);
     const supportLevel = getAppSupportLevel(contentType, indirectionType);
-    const templated = Boolean((link as any).templated ?? (link as any).template);
+    const templated = Boolean(
+      (link as any).templated ?? (link as any).template
+    );
     const uriTemplateVariables =
       templated && (link as any).properties?.uri_template_variables?.map
         ? ((link as any).properties.uri_template_variables.map as Record<
