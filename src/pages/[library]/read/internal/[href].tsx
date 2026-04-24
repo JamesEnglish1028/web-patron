@@ -4,7 +4,7 @@ import { NextPage, GetStaticProps, GetStaticPaths } from "next";
 import ReaderPageLayout from "components/reader/ReaderPageLayout";
 import ReaderEngineView from "components/reader/ReaderEngineView";
 import withAppProps, { AppProps } from "dataflow/withAppProps";
-import { getReaderAuth } from "utils/readerAuth";
+import { getReaderAuth, type ReaderAuthPayload } from "utils/readerAuth";
 
 const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
   const router = useRouter();
@@ -18,20 +18,31 @@ const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
     typeof router.query.title === "string" ? router.query.title : "";
 
   const decodedHref = hrefParam ? decodeURIComponent(hrefParam) : "";
-  const auth = authKey ? getReaderAuth(authKey) : null;
+
+  // Read auth from storage only once the router is ready (client-side only).
+  // Calling getReaderAuth during SSR or hydration would access sessionStorage/
+  // localStorage which don't exist in Node, causing a hydration mismatch.
+  const [auth, setAuth] = React.useState<ReaderAuthPayload | null>(null);
+  React.useEffect(() => {
+    if (!router.isReady) return;
+    setAuth(authKey ? getReaderAuth(authKey) : null);
+  }, [router.isReady, authKey]);
+
   const resolvedUrl = auth?.url || decodedHref;
 
   return (
     <ReaderPageLayout library={library} error={error}>
-      {({ setLoading }) => (
-        <ReaderEngineView
-          resolvedUrl={resolvedUrl}
-          contentType={contentType}
-          authToken={auth?.token}
-          title={titleParam ? decodeURIComponent(titleParam) : undefined}
-          setLoading={setLoading}
-        />
-      )}
+      {({ setLoading }) =>
+        resolvedUrl ? (
+          <ReaderEngineView
+            resolvedUrl={resolvedUrl}
+            contentType={contentType}
+            authToken={auth?.token}
+            title={titleParam ? decodeURIComponent(titleParam) : undefined}
+            setLoading={setLoading}
+          />
+        ) : null
+      }
     </ReaderPageLayout>
   );
 };

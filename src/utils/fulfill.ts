@@ -152,8 +152,7 @@ export const getFulfillmentFromLink =
         };
       }
       case OPDS1.AudiobookMediaType:
-      case OPDS1.AccessRestrictionAudiobookMediaType:
-      case OPDS1.LcpAudioBookMediaType: {
+      case OPDS1.AccessRestrictionAudiobookMediaType: {
         return {
           id: link.url,
           type: "read-online-internal",
@@ -167,6 +166,12 @@ export const getFulfillmentFromLink =
             linkTemplateData
           )
         };
+      }
+      case OPDS1.LcpAudioBookMediaType: {
+        // LCP-encrypted audiobooks require a DRM-capable reading system.
+        // Web browsers cannot decrypt LCP content, so direct in-app playback
+        // is not supported. Redirect patrons to the companion mobile app.
+        return { type: "unsupported" };
       }
       case OPDS1.Mobi8Mediatype:
       case OPDS1.MobiPocketMediaType: {
@@ -353,11 +358,11 @@ const constructGetLocation =
 
     // Some audiobook feeds expose a direct fulfill URL but still require
     // bearer-token exchange to return { location, token }.
+    // LCP audiobooks are excluded here — they are marked unsupported above.
     if (
       [
         OPDS1.AudiobookMediaType,
-        OPDS1.AccessRestrictionAudiobookMediaType,
-        OPDS1.LcpAudioBookMediaType
+        OPDS1.AccessRestrictionAudiobookMediaType
       ].includes(contentType)
     ) {
       if (isPalaceManagerLikeUrl(resolvedUrl)) {
@@ -388,8 +393,7 @@ const constructGetLocation =
           const audiobookLink = audiobookEntry.fulfillmentLinks?.find(link =>
             [
               OPDS1.AudiobookMediaType,
-              OPDS1.AccessRestrictionAudiobookMediaType,
-              OPDS1.LcpAudioBookMediaType
+              OPDS1.AccessRestrictionAudiobookMediaType
             ].includes(link.contentType)
           );
 

@@ -10,6 +10,31 @@ const isHttpUrl = (value: string) => {
   }
 };
 
+/**
+ * Block requests to private/loopback/cloud-metadata IP ranges to prevent
+ * Server-Side Request Forgery (SSRF) attacks. This proxy is intentionally
+ * open to any public hostname (audiobook CDN hostnames are not known at
+ * build time), so blocking internal ranges is the practical mitigation.
+ */
+const SSRF_BLOCKED_HOSTNAME_PATTERNS: RegExp[] = [
+  /^localhost$/i,
+  /^127\.\d+\.\d+\.\d+$/, // IPv4 loopback
+  /^0\.0\.0\.0$/,
+  /^::1$/, // IPv6 loopback
+  /^10\.\d+\.\d+\.\d+$/, // RFC-1918 class A
+  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/, // RFC-1918 class B
+  /^192\.168\.\d+\.\d+$/, // RFC-1918 class C
+  /^169\.254\.\d+\.\d+$/, // link-local / AWS+GCP+Azure metadata (169.254.169.254)
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/, // CGNAT (RFC-6598)
+  /^fc00:/i, // IPv6 ULA
+  /^fd[0-9a-f]{2}:/i, // IPv6 ULA
+  /\.local$/i, // mDNS / local network
+  /\.internal$/i, // cloud-internal DNS
+];
+
+const isSsrfTarget = (hostname: string): boolean =>
+  SSRF_BLOCKED_HOSTNAME_PATTERNS.some(pattern => pattern.test(hostname));
+
 const copyHeader = (source: Headers, target: NextApiResponse, name: string) => {
   const value = source.get(name);
   if (value) target.setHeader(name, value);
@@ -52,6 +77,18 @@ export default async function handler(
     : req.query.url;
 
   if (!urlParam || typeof urlParam !== "string" || !isHttpUrl(urlParam)) {
+    res.status(400).end("Missing or invalid url parameter.");
+    return;
+  }
+
+  // Reject requests targeting private/loopback/cloud-metadata ranges (SSRF).
+  try {
+    const { hostname } = new URL(urlParam);
+    if (isSsrfTarget(hostname)) {
+      res.status(400).end("URL target is not allowed.");
+      return;
+    }
+  } catch {
     res.status(400).end("Missing or invalid url parameter.");
     return;
   }

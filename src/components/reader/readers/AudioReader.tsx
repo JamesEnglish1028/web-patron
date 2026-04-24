@@ -183,7 +183,6 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
   React.useEffect(() => {
     let active = true;
-    const objectUrl: string | null = null;
 
     const load = async () => {
       setLoading(true);
@@ -433,7 +432,6 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [url, authToken, contentType, setLoading, storageKey]);
 
@@ -467,7 +465,13 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     string | null
   > => {
     try {
-      const req = buildReaderRequest(url, authToken);
+      // Include the Accept header so the CM returns a bearer-token document
+      // rather than the manifest JSON directly.
+      const req = buildReaderRequest(
+        url,
+        authToken,
+        "application/vnd.librarysimplified.bearer-token+json, application/audiobook+json;q=0.9, */*;q=0.1"
+      );
       const resp = await fetch(req.url, { headers: req.headers });
       if (!resp.ok) return null;
       const ct = resp.headers.get("content-type")?.toLowerCase() || "";
@@ -476,26 +480,15 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       }
       const data = await resp.json();
       const freshToken: string = data.access_token || data.accessToken || "";
-      const freshLocation: string = data.location || "";
-      if (!freshToken || !freshLocation) return null;
+      if (!freshToken) return null;
 
-      // Re-fetch the manifest to get the updated set of track URLs for caching
-      const manifestReq = buildReaderRequest(
-        freshLocation,
-        `Bearer ${freshToken}`,
-        contentType || "application/audiobook+json"
-      );
-      const manifestResp = await fetch(manifestReq.url, {
-        headers: manifestReq.headers
-      });
-      if (!manifestResp.ok) return null;
-
-      const manifestText = await manifestResp.text();
-      const freshManifest = parseAudiobookManifest(manifestText, freshLocation);
-
+      // Cache the fresh token for all tracks already in state.
+      // No need to re-fetch the manifest — the track hrefs are already known.
       try {
-        for (const t of freshManifest.tracks) {
-          sessionStorage.setItem(`reader:audio:token:${t.href}`, freshToken);
+        if (manifest?.tracks) {
+          for (const t of manifest.tracks) {
+            sessionStorage.setItem(`reader:audio:token:${t.href}`, freshToken);
+          }
         }
       } catch {
         // ignore storage errors
@@ -505,7 +498,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     } catch {
       return null;
     }
-  }, [url, authToken, contentType]);
+  }, [url, authToken, manifest]);
 
   React.useEffect(() => {
     let active = true;
@@ -530,9 +523,16 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           // ignore storage errors
         }
 
-        // Fallback to X-Reader-Authorization if no cached bearer token
+        // Only fall back to authToken for vendor Bearer tokens or local CM tracks.
+        // Never forward a Basic CM credential to a remote vendor CDN — those URLs
+        // require a vendor Bearer token obtained from the bearer-token exchange.
         if (!headers["X-Reader-Authorization"] && authToken) {
-          headers["X-Reader-Authorization"] = authToken;
+          const isBearerToken = authToken.toLowerCase().startsWith("bearer ");
+          const isCmTrack =
+            isLocalCmUrl(track.href) || isPalaceManagerLikeUrl(track.href);
+          if (isBearerToken || isCmTrack) {
+            headers["X-Reader-Authorization"] = authToken;
+          }
         }
 
         const localCm = isLocalCmUrl(track.href);
