@@ -8,6 +8,7 @@ import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 type PdfJsModule = {
   GlobalWorkerOptions: { workerSrc: string };
@@ -19,11 +20,30 @@ type PdfJsModule = {
 type PdfViewport = {
   width: number;
   height: number;
+  transform: number[];
 };
 
 type PdfRenderTask = {
   promise: Promise<void>;
   cancel?: () => void;
+};
+
+type PdfTextItem = {
+  str: string;
+  transform: number[];
+  width: number;
+  height: number;
+};
+
+type PdfTextContent = {
+  items: PdfTextItem[];
+};
+
+type TextLayerData = {
+  items: PdfTextItem[];
+  viewportTransform: number[];
+  canvasWidth: number;
+  canvasHeight: number;
 };
 
 type PdfPage = {
@@ -32,6 +52,7 @@ type PdfPage = {
     canvasContext: CanvasRenderingContext2D;
     viewport: PdfViewport;
   }) => PdfRenderTask;
+  getTextContent?: () => Promise<PdfTextContent>;
 };
 
 type PdfDestinationRef = unknown;
@@ -69,6 +90,7 @@ type PdfAnnotationItem = {
   id: string;
   pageNumber: number;
   note: string;
+  quotedText?: string;
   createdAt: number;
 };
 
@@ -117,6 +139,18 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const [searchActive, setSearchActive] = React.useState(false);
   const [displayActive, setDisplayActive] = React.useState(false);
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
+  const [primaryTextData, setPrimaryTextData] =
+    React.useState<TextLayerData | null>(null);
+  const [secondaryTextData, setSecondaryTextData] =
+    React.useState<TextLayerData | null>(null);
+  const [selectionPopup, setSelectionPopup] = React.useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [pendingCitationText, setPendingCitationText] = React.useState<
+    string | null
+  >(null);
 
   const readerInfo = useReaderInfo();
 
@@ -166,10 +200,18 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       setDisplayActive(false);
 
       try {
-        const response = await fetch(getProxiedUrl(url), {
-          headers: authToken
-            ? { "X-Reader-Authorization": authToken }
-            : undefined
+        const proxied = toBrowserFetchUrl(url);
+        const isLocalCm = proxied !== url;
+        const fetchUrl = isLocalCm ? proxied : getProxiedUrl(url);
+        const fetchHeaders: Record<string, string> = {};
+        if (authToken) {
+          const headerKey = isLocalCm
+            ? "Authorization"
+            : "X-Reader-Authorization";
+          fetchHeaders[headerKey] = authToken;
+        }
+        const response = await fetch(fetchUrl, {
+          headers: Object.keys(fetchHeaders).length ? fetchHeaders : undefined
         });
         if (!response.ok) {
           throw new Error(`Failed to load PDF (${response.status})`);
@@ -369,6 +411,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       const secondaryCanvas = secondaryCanvasRef.current;
       if (!pdf || !primaryCanvas || !numPages || useNativeFallback) return;
 
+      setPrimaryTextData(null);
+      setSecondaryTextData(null);
+
       try {
         const requestedPages =
           pageView === "spread"
@@ -391,6 +436,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             : Math.max(220, containerWidth - 48);
 
         const tasks: PdfRenderTask[] = [];
+        const computedScales: {
+          viewportTransform: number[];
+        }[] = [];
 
         for (let i = 0; i < canvases.length; i += 1) {
           const canvas = canvases[i];
@@ -415,12 +463,17 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             0.25,
             perPageAvailableWidth / baseViewport.width
           );
-          const viewport = page.getViewport({ scale: widthScale * scale });
+          const finalScale = widthScale * scale;
+          const viewport = page.getViewport({ scale: finalScale });
 
           canvas.width = Math.floor(viewport.width);
           canvas.height = Math.floor(viewport.height);
           canvas.style.width = `${Math.floor(viewport.width)}px`;
           canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+          computedScales[i] = {
+            viewportTransform: viewport.transform
+          };
 
           const task = page.render({ canvasContext: context, viewport });
           tasks.push(task);
@@ -428,6 +481,31 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
         renderTasksRef.current = tasks;
         await Promise.all(tasks.map(task => task.promise));
+
+        // Fetch text content for text-selection overlay
+        const textDataList: (TextLayerData | null)[] = [null, null];
+        for (let i = 0; i < canvases.length; i += 1) {
+          const page = pages[i];
+          const canvas = canvases[i];
+          const scaleInfo = computedScales[i];
+          if (!page || !canvas || !scaleInfo || canvas.width === 0) continue;
+          try {
+            const textContent = await page.getTextContent?.();
+            if (textContent?.items?.length) {
+              textDataList[i] = {
+                items: textContent.items,
+                viewportTransform: scaleInfo.viewportTransform,
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height
+              };
+            }
+          } catch {
+            // text content unavailable for this page
+          }
+        }
+        setPrimaryTextData(textDataList[0] ?? null);
+        setSecondaryTextData(textDataList[1] ?? null);
+
         setLoading(false);
       } catch (err) {
         const message =
@@ -510,6 +588,23 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       setEditingAnnotationDraft("");
     }
   };
+
+  const handleTextLayerMouseUp = React.useCallback(
+    (event: React.MouseEvent) => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        setSelectionPopup(null);
+        return;
+      }
+      const text = selection.toString().trim();
+      if (!text) {
+        setSelectionPopup(null);
+        return;
+      }
+      setSelectionPopup({ text, x: event.clientX, y: event.clientY });
+    },
+    []
+  );
 
   const nativeViewerSrc = pdfUrl
     ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH`
@@ -894,14 +989,50 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     "& .pdf-annotation-input": { width: "100%", minHeight: 84 }
                   }}
                 >
+                  {pendingCitationText && (
+                    <Box
+                      sx={{
+                        borderLeft: "3px solid",
+                        borderColor: "ui.gray.medium",
+                        pl: 2,
+                        py: 1,
+                        background: "rgba(0,0,0,0.03)",
+                        borderRadius: "0 4px 4px 0"
+                      }}
+                    >
+                      <Text
+                        variant="text.detail"
+                        sx={{ color: "ui.gray.dark", mb: 1 }}
+                      >
+                        Selected text:
+                      </Text>
+                      <Text
+                        variant="text.detail"
+                        sx={{ fontStyle: "italic", mb: 1 }}
+                      >
+                        &ldquo;{pendingCitationText}&rdquo;
+                      </Text>
+                      <Button
+                        variant="ghost"
+                        color="text"
+                        onClick={() => setPendingCitationText(null)}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  )}
                   <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                    Add a note for this page
+                    {pendingCitationText
+                      ? "Add an optional note"
+                      : "Add a note for this page"}
                   </Text>
                   <textarea
                     className="pdf-annotation-input"
                     value={annotationDraft}
                     onChange={event => setAnnotationDraft(event.target.value)}
-                    placeholder="Type a note"
+                    placeholder={
+                      pendingCitationText ? "Optional note..." : "Type a note"
+                    }
                   />
                   <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
                     <Button
@@ -909,20 +1040,22 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                       color="text"
                       onClick={() => {
                         const note = annotationDraft.trim();
-                        if (!note) return;
+                        if (!note && !pendingCitationText) return;
                         setAnnotations(prev => [
                           ...prev,
                           {
                             id: createId(),
                             pageNumber,
                             note,
+                            quotedText: pendingCitationText ?? undefined,
                             createdAt: Date.now()
                           }
                         ]);
                         setAnnotationDraft("");
+                        setPendingCitationText(null);
                       }}
                     >
-                      Save note
+                      {pendingCitationText ? "Save citation" : "Save note"}
                     </Button>
                   </Box>
                   {annotations.length > 0 ? (
@@ -1032,9 +1165,31 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                 </Box>
                               </>
                             ) : (
-                              <Text variant="text.detail">
-                                {annotation.note}
-                              </Text>
+                              <>
+                                {annotation.quotedText && (
+                                  <Box
+                                    sx={{
+                                      borderLeft: "3px solid",
+                                      borderColor: "ui.gray.medium",
+                                      pl: 2,
+                                      mb: 1,
+                                      fontStyle: "italic"
+                                    }}
+                                  >
+                                    <Text
+                                      variant="text.detail"
+                                      sx={{ color: "ui.gray.dark" }}
+                                    >
+                                      &ldquo;{annotation.quotedText}&rdquo;
+                                    </Text>
+                                  </Box>
+                                )}
+                                {annotation.note && (
+                                  <Text variant="text.detail">
+                                    {annotation.note}
+                                  </Text>
+                                )}
+                              </>
                             )}
                           </Box>
                         ))}
@@ -1127,8 +1282,42 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           }}
         >
           <Box sx={{ display: "flex", gap: 3, alignItems: "flex-start" }}>
-            <canvas ref={primaryCanvasRef} />
-            {pageView === "spread" && <canvas ref={secondaryCanvasRef} />}
+            <Box
+              sx={{
+                position: "relative",
+                lineHeight: 0,
+                display: "inline-block",
+                "& canvas": { display: "block" }
+              }}
+            >
+              <canvas ref={primaryCanvasRef} />
+              {primaryTextData && (
+                <PdfTextLayer
+                  data={primaryTextData}
+                  onMouseDown={() => setSelectionPopup(null)}
+                  onMouseUp={handleTextLayerMouseUp}
+                />
+              )}
+            </Box>
+            {pageView === "spread" && (
+              <Box
+                sx={{
+                  position: "relative",
+                  lineHeight: 0,
+                  display: "inline-block",
+                  "& canvas": { display: "block" }
+                }}
+              >
+                <canvas ref={secondaryCanvasRef} />
+                {secondaryTextData && (
+                  <PdfTextLayer
+                    data={secondaryTextData}
+                    onMouseDown={() => setSelectionPopup(null)}
+                    onMouseUp={handleTextLayerMouseUp}
+                  />
+                )}
+              </Box>
+            )}
           </Box>
         </Box>
 
@@ -1184,11 +1373,149 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           {progressLabel}
         </Text>
       </Box>
+      {selectionPopup && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: selectionPopup.x,
+            top: selectionPopup.y - 52,
+            zIndex: 1000,
+            background: "var(--reader-chrome-bg, #ffffff)",
+            color: "var(--reader-chrome-text, #0f172a)",
+            border: "1px solid",
+            borderColor: "var(--reader-chrome-border, #e2e8f0)",
+            borderRadius: 8,
+            px: 1,
+            py: "4px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            display: "flex",
+            alignItems: "center",
+            gap: 0,
+            transform: "translateX(-50%)",
+            pointerEvents: "all"
+          }}
+        >
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => {
+              setPendingCitationText(selectionPopup.text);
+              setAnnotationDraft("");
+              setTocActive(true);
+              setTocTab("annotations");
+              setSearchActive(false);
+              setDisplayActive(false);
+              setSelectionPopup(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            Create Citation
+          </Button>
+          <Box
+            sx={{
+              width: "1px",
+              alignSelf: "stretch",
+              background: "var(--reader-chrome-border, #e2e8f0)"
+            }}
+          />
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => {
+              setSelectionPopup(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            ✕
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 };
 
 export default PdfReader;
+
+const PdfTextLayer: React.FC<{
+  data: TextLayerData;
+  onMouseDown?: () => void;
+  onMouseUp: (event: React.MouseEvent) => void;
+}> = ({ data, onMouseDown, onMouseUp }) => {
+  const { items, viewportTransform, canvasWidth, canvasHeight } = data;
+  const [vA, vB, vC, vD, vE, vF] = viewportTransform;
+  return (
+    <Box
+      role="none"
+      onMouseDown={onMouseDown}
+      onMouseUp={onMouseUp}
+      sx={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: `${canvasWidth}px`,
+        height: `${canvasHeight}px`,
+        userSelect: "text",
+        cursor: "text",
+        overflow: "hidden",
+        zIndex: 10,
+        pointerEvents: "all"
+      }}
+    >
+      {items.map((item, idx) => {
+        if (!item.str) return null;
+        const [ia, ib, , , itx, ity] = item.transform;
+        // Apply the viewport's own transform matrix (accounts for viewBox
+        // origin offsets and Y-flip) to get true canvas-pixel coordinates.
+        const canvasX = vA * itx + vC * ity + vE;
+        const canvasY = vB * itx + vD * ity + vF;
+        // Font height in canvas pixels
+        const fontHeight = Math.sqrt(
+          (vA * ia + vC * ib) ** 2 + (vB * ia + vD * ib) ** 2
+        );
+        if (fontHeight <= 0) return null;
+        // PDF.js DEFAULT_FONT_ASCENT ≈ 0.8
+        const ascent = fontHeight * 0.8;
+        const w = item.width > 0 ? Math.abs(vA * item.width) : undefined;
+        return (
+          <Box
+            as="span"
+            key={idx}
+            sx={{
+              position: "absolute",
+              left: `${canvasX}px`,
+              top: `${canvasY - ascent}px`,
+              ...(w !== undefined ? { width: `${w}px` } : {}),
+              height: `${fontHeight}px`,
+              fontSize: `${fontHeight}px`,
+              fontFamily: "sans-serif",
+              whiteSpace: "pre",
+              color: "transparent",
+              cursor: "text",
+              lineHeight: 1,
+              userSelect: "text"
+            }}
+          >
+            {item.str}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+};
 
 const PdfTocTree: React.FC<{
   items: PdfTocItem[];
