@@ -18,6 +18,24 @@ const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
     typeof router.query.title === "string" ? router.query.title : "";
   const bookUrlParam =
     typeof router.query.bookUrl === "string" ? router.query.bookUrl : "";
+  const coverUrlParam =
+    typeof router.query.coverUrl === "string" ? router.query.coverUrl : "";
+  const bookAuthorsParam =
+    typeof router.query.bookAuthors === "string"
+      ? router.query.bookAuthors
+      : "";
+  const bookPublisherParam =
+    typeof router.query.bookPublisher === "string"
+      ? router.query.bookPublisher
+      : "";
+  const bookLanguageParam =
+    typeof router.query.bookLanguage === "string"
+      ? router.query.bookLanguage
+      : "";
+  const bookIdentifierParam =
+    typeof router.query.bookIdentifier === "string"
+      ? router.query.bookIdentifier
+      : "";
 
   const decodedHref = hrefParam ? decodeURIComponent(hrefParam) : "";
 
@@ -43,6 +61,29 @@ const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
             title={titleParam ? decodeURIComponent(titleParam) : undefined}
             bookUrl={
               bookUrlParam ? decodeURIComponent(bookUrlParam) : undefined
+            }
+            coverUrl={
+              coverUrlParam ? decodeURIComponent(coverUrlParam) : undefined
+            }
+            bookAuthors={
+              bookAuthorsParam
+                ? decodeURIComponent(bookAuthorsParam)
+                : undefined
+            }
+            bookPublisher={
+              bookPublisherParam
+                ? decodeURIComponent(bookPublisherParam)
+                : undefined
+            }
+            bookLanguage={
+              bookLanguageParam
+                ? decodeURIComponent(bookLanguageParam)
+                : undefined
+            }
+            bookIdentifier={
+              bookIdentifierParam
+                ? decodeURIComponent(bookIdentifierParam)
+                : undefined
             }
             setLoading={setLoading}
           />

@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Box } from "theme-ui";
+import { Box, type ThemeUIStyleObject } from "theme-ui";
 import Button, { AnchorButton } from "components/Button";
 import Stack from "components/Stack";
 import { Text } from "components/Text";
+import Info from "icons/Info";
 import Trash from "icons/Trash";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
@@ -99,6 +100,11 @@ type PdfReaderProps = {
   authToken?: string;
   title?: string;
   bookUrl?: string;
+  coverUrl?: string;
+  bookAuthors?: string;
+  bookPublisher?: string;
+  bookLanguage?: string;
+  bookIdentifier?: string;
   setLoading: (value: boolean) => void;
 };
 
@@ -107,6 +113,11 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   authToken,
   title,
   bookUrl,
+  coverUrl,
+  bookAuthors,
+  bookPublisher,
+  bookLanguage,
+  bookIdentifier,
   setLoading
 }) => {
   const objectUrlRef = React.useRef<string | null>(null);
@@ -156,13 +167,47 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const readerInfo = useReaderInfo();
 
+  React.useEffect(() => {
+    if (!readerInfo?.setBookInfo) return;
+    readerInfo.setBookInfo({
+      title: title || undefined,
+      author: bookAuthors || undefined,
+      publisher: bookPublisher || undefined,
+      language: bookLanguage || undefined,
+      identifier: bookIdentifier || undefined,
+      coverUrl: coverUrl || undefined
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title,
+    bookAuthors,
+    bookPublisher,
+    bookLanguage,
+    bookIdentifier,
+    coverUrl
+  ]);
+
   const closePanels = () => {
     setTocActive(false);
     setSearchActive(false);
     setDisplayActive(false);
   };
 
-  const leftControls = readerInfo?.backControl;
+  const leftControls = (
+    <Stack spacing={2}>
+      {readerInfo?.backControl}
+      <Button
+        variant="ghost"
+        color="text"
+        iconLeft={Info}
+        onClick={readerInfo?.toggleInfo}
+        ref={readerInfo?.infoButtonRef}
+        aria-label="Information"
+        title="Information"
+        sx={iconOnlyControlButtonSx}
+      />
+    </Stack>
+  );
 
   const openTocPanel = () => {
     setTocActive(prev => !prev);
@@ -1475,6 +1520,17 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 };
 
 export default PdfReader;
+
+const iconOnlyControlButtonSx: ThemeUIStyleObject = {
+  px: 2,
+  minWidth: 44,
+  "& svg": {
+    width: "1.5em",
+    height: "1.5em",
+    mr: 0,
+    ml: 0
+  }
+};
 
 const PdfTextLayer: React.FC<{
   data: TextLayerData;
