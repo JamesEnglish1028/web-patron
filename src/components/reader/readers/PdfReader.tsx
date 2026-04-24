@@ -10,6 +10,8 @@ import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
+// createId is the same ID generator used by EpubReader for bookmarks/citations.
+import { createId } from "utils/readerAnnotations";
 
 type PdfJsModule = {
   GlobalWorkerOptions: { workerSrc: string };
@@ -167,6 +169,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const readerInfo = useReaderInfo();
 
+  // Populate the ReaderWrapper book-info panel with catalog metadata passed
+  // in via URL query params.  EPUB readers extract this from the OPF file;
+  // PDFs carry no equivalent embedded metadata so we rely on catalog data.
   React.useEffect(() => {
     if (!readerInfo?.setBookInfo) return;
     readerInfo.setBookInfo({
@@ -227,6 +232,10 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     setSearchActive(false);
   };
 
+  // Phase 1 — Fetch: Download the PDF bytes through the proxy and store them
+  // as a Uint8Array + blob URL.  All visible state is reset here so stale page
+  // content from a previous URL is never shown.  Heavy pdfjs initialisation
+  // runs in a separate effect once pdfData is set.
   React.useEffect(() => {
     let active = true;
 
@@ -330,6 +339,10 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     }
   }, [annotations, url]);
 
+  // Phase 2 — Initialise: Dynamically import pdfjs (keeps the large worker
+  // out of the main bundle), parse the document, and resolve the PDF outline
+  // into page-number-based TOC entries.  Falls back to the native browser PDF
+  // viewer if the custom canvas renderer fails to initialise.
   React.useEffect(() => {
     if (!pdfData) return;
 
@@ -451,6 +464,11 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     }
   }, [pageView]);
 
+  // Render the current page(s) onto canvas(es).  Spread view renders two
+  // pages side-by-side using primary and secondary canvases.  After the render
+  // tasks complete, text content is fetched so PdfTextLayer can overlay a
+  // transparent, selectable surface for copy/citation without the PDF needing
+  // to be a tagged or searchable PDF.
   React.useEffect(() => {
     const renderPages = async () => {
       const pdf = pdfRef.current;
@@ -588,8 +606,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const zoomOut = () => setScale(prev => Math.max(0.6, prev - 0.1));
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
-  const createId = () =>
-    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  // --- Annotation CRUD ---
 
   const addBookmark = () => {
     if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
@@ -634,6 +652,25 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       setEditingAnnotationId(null);
       setEditingAnnotationDraft("");
     }
+  };
+
+  // Extracted from the JSX save button so the handler has a clear name and
+  // is testable in isolation.
+  const addAnnotation = () => {
+    const note = annotationDraft.trim();
+    if (!note && !pendingCitationText) return;
+    setAnnotations(prev => [
+      ...prev,
+      {
+        id: createId(),
+        pageNumber,
+        note,
+        quotedText: pendingCitationText ?? undefined,
+        createdAt: Date.now()
+      }
+    ]);
+    setAnnotationDraft("");
+    setPendingCitationText(null);
   };
 
   const copyAnnotation = async (annotation: PdfAnnotationItem) => {
@@ -1102,22 +1139,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     <Button
                       variant="ghost"
                       color="text"
-                      onClick={() => {
-                        const note = annotationDraft.trim();
-                        if (!note && !pendingCitationText) return;
-                        setAnnotations(prev => [
-                          ...prev,
-                          {
-                            id: createId(),
-                            pageNumber,
-                            note,
-                            quotedText: pendingCitationText ?? undefined,
-                            createdAt: Date.now()
-                          }
-                        ]);
-                        setAnnotationDraft("");
-                        setPendingCitationText(null);
-                      }}
+                      onClick={addAnnotation}
                     >
                       {pendingCitationText ? "Save citation" : "Save note"}
                     </Button>
@@ -1539,6 +1561,11 @@ const PdfTextLayer: React.FC<{
 }> = ({ data, onMouseDown, onMouseUp }) => {
   const { items, viewportTransform, canvasWidth, canvasHeight } = data;
   const [vA, vB, vC, vD, vE, vF] = viewportTransform;
+  // The PDF page coordinate system has its origin at the bottom-left with y
+  // increasing upward.  The pdfjs viewport transform [vA,vB,vC,vD,vE,vF] maps
+  // PDF user-space units to canvas pixels, flipping the y-axis in the process.
+  // We multiply each text item's translation vector (itx, ity) by this matrix
+  // to obtain canvas-pixel coordinates for the transparent span overlay.
   return (
     <Box
       role="none"

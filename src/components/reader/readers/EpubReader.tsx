@@ -1,5 +1,10 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
+// react-hooks/exhaustive-deps is suppressed globally because the main EPUB
+// load effect intentionally omits display-preference deps (fontSize, theme,
+// fontFamily, pageView) to avoid reloading the whole book when the reader
+// changes a display setting.  Those preferences are synced to the live
+// rendition by their own dedicated effects below.
 import * as React from "react";
 import { Box, type ThemeUIStyleObject } from "theme-ui";
 import { Text } from "components/Text";
@@ -25,6 +30,11 @@ import {
   saveCitations,
   createId
 } from "utils/readerAnnotations";
+
+// --- epubjs type shims ---
+// epubjs ships no TypeScript types. These interfaces describe only the subset
+// of the API that EpubReader uses. All fields are optional so the casts remain
+// safe if an older or newer epubjs version omits a method.
 
 type InputBoxProps =
   | ({ as: "input" } & React.InputHTMLAttributes<HTMLInputElement> & { sx?: ThemeUIStyleObject })
@@ -125,6 +135,8 @@ type EpubBookLike = {
   destroy?: () => void;
 };
 
+// --- EpubReader ---
+
 const EpubReader: React.FC<EpubReaderProps> = ({
   url,
   authToken,
@@ -132,6 +144,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   bookUrl,
   setLoading
 }) => {
+  // Refs hold mutable values that must survive re-renders without causing them.
+  // bookRef and renditionRef are the live epubjs objects; tocRef is a
+  // synchronous mirror of tocItems state used inside async callbacks.
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const bookRef = React.useRef<EpubBookLike | null>(null);
   const renditionRef = React.useRef<EpubRenditionLike | null>(null);
@@ -178,6 +193,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
   const readerInfo = useReaderInfo();
 
+  // Wrapped in useCallback with an empty dep array because it is passed into
+  // the load effect's dep array — a stable reference prevents that effect
+  // from re-running every render.
   const applyTheme = React.useCallback((next: "light" | "dark") => {
     const rendition = renditionRef.current;
     rendition?.themes?.select?.(next);
@@ -209,6 +227,10 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     tocRef.current = tocItems;
   }, [tocItems]);
 
+  // --- Load EPUB ---
+  // The `active` flag prevents state updates after the component unmounts or
+  // before a new load cycle begins.  The cleanup function flips it to false,
+  // turning any in-flight awaits into no-ops.
   React.useEffect(() => {
     let active = true;
 
@@ -317,6 +339,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           }
         });
 
+        // epubjs fires "selected" with the contents object of the iframe that
+        // renders the EPUB page.  We offset the in-iframe selection rect by the
+        // iframe's bounding rect so the popup appears in host-document space.
         rendition.on?.("selected", (_cfiRange: string, contents: EpubContentsLike) => {
           if (!active) return;
           try {
@@ -401,6 +426,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     };
   }, [url, authToken, title, setLoading, applyTheme]);
 
+  // --- Sync display settings to the active rendition ---
+  // Each effect below responds to a single display preference change and
+  // pushes it into the live epubjs rendition without reloading the book.
   React.useEffect(() => {
     renditionRef.current?.themes?.fontSize?.(`${fontSize}%`);
   }, [fontSize]);
@@ -457,6 +485,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     }
   }, [url]);
 
+  // Arrow keys page through the book unless focus is inside a text input.
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -517,6 +546,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     // Do not throw to the browser console; surface a user-facing error instead.
     setError("Unable to navigate to this section. The EPUB TOC link may be malformed.");
   };
+
+  // --- Bookmark and Citation CRUD ---
 
   const addBookmark = () => {
     if (!currentCfi) return;
@@ -654,6 +685,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     () => Boolean(currentCfi && bookmarks.some(entry => entry.cfi === currentCfi)),
     [bookmarks, currentCfi]
   );
+
+  // --- Header controls ---
 
   const leftControls = (
     <Stack spacing={2}>
@@ -1285,6 +1318,10 @@ const pushCandidate = (set: Set<string>, value?: string) => {
   if (trimmed) set.add(trimmed);
 };
 
+// buildDisplayCandidates generates a prioritised list of targets to pass to
+// rendition.display().  epubjs accepts CFIs, bare filenames, relative paths,
+// and full hrefs — we generate all variants so TOC links that use different
+// path formats still resolve without errors surfacing to the user.
 const buildDisplayCandidates = (
   target: string,
   spineItems: EpubSpineItem[] = []
@@ -1421,7 +1458,7 @@ const findTocLabel = (
 ): string | undefined => {
   for (const item of items) {
     if (!item) continue;
-    if (item.href && href && item.href.split("#")[0] === href.split("#")[0]) {
+    if (item.href && href && tocHrefMatches(item.href, href)) {
       return item.label || item.title;
     }
     if (Array.isArray(item.subitems)) {
