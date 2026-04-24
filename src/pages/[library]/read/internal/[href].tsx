@@ -16,6 +16,8 @@ const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
     typeof router.query.authKey === "string" ? router.query.authKey : "";
   const titleParam =
     typeof router.query.title === "string" ? router.query.title : "";
+  const bookUrlParam =
+    typeof router.query.bookUrl === "string" ? router.query.bookUrl : "";
 
   const decodedHref = hrefParam ? decodeURIComponent(hrefParam) : "";
 
@@ -39,6 +41,9 @@ const InternalReaderPage: NextPage<AppProps> = ({ library, error }) => {
             contentType={contentType}
             authToken={auth?.token}
             title={titleParam ? decodeURIComponent(titleParam) : undefined}
+            bookUrl={
+              bookUrlParam ? decodeURIComponent(bookUrlParam) : undefined
+            }
             setLoading={setLoading}
           />
         ) : null

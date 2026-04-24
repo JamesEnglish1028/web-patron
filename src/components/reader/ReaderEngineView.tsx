@@ -12,6 +12,7 @@ type ReaderEngineViewProps = {
   contentType: string;
   authToken?: string;
   title?: string;
+  bookUrl?: string;
   setLoading: (value: boolean) => void;
 };
 
@@ -32,6 +33,7 @@ const ReaderEngineView: React.FC<ReaderEngineViewProps> = ({
   contentType,
   authToken,
   title,
+  bookUrl,
   setLoading
 }) => {
   const { type, profile } = parseContentType(contentType);
@@ -92,6 +94,7 @@ const ReaderEngineView: React.FC<ReaderEngineViewProps> = ({
         url={resolvedUrl}
         authToken={authToken}
         title={title}
+        bookUrl={bookUrl}
         setLoading={setLoading}
       />
     );
@@ -103,6 +106,7 @@ const ReaderEngineView: React.FC<ReaderEngineViewProps> = ({
         url={resolvedUrl}
         authToken={authToken}
         title={title}
+        bookUrl={bookUrl}
         setLoading={setLoading}
       />
     );

@@ -13,6 +13,7 @@ export type ReaderCitation = {
   id: string;
   cfi: string;
   note: string;
+  quotedText?: string;
   chapter?: string;
   pageLabel?: string;
   createdAt: number;

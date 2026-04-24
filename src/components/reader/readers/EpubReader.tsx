@@ -36,6 +36,7 @@ type EpubReaderProps = {
   url: string;
   authToken?: string;
   title?: string;
+  bookUrl?: string;
   setLoading: (value: boolean) => void;
 };
 
@@ -79,10 +80,14 @@ type EpubThemesApi = {
   font?: (fontFamily: string) => void;
 };
 
+type EpubContentsLike = {
+  window?: Window & typeof globalThis;
+};
+
 type EpubRenditionLike = {
   themes?: EpubThemesApi;
   views?: () => Array<{ document?: Document }>;
-  on?: (event: "relocated", callback: (location: EpubRelocation) => void) => void;
+  on?: (event: string, callback: (...args: any[]) => void) => void;
   display: (target?: string) => Promise<unknown> | unknown;
   prev?: () => void;
   next?: () => void;
@@ -124,6 +129,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   url,
   authToken,
   title,
+  bookUrl,
   setLoading
 }) => {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -155,6 +161,14 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
+  const [selectionPopup, setSelectionPopup] = React.useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [pendingCitationText, setPendingCitationText] = React.useState<
+    string | null
+  >(null);
 
   const searchInProgressRef = React.useRef(false);
   const displayPanelRef = React.useRef<HTMLDivElement | null>(null);
@@ -303,6 +317,25 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           }
         });
 
+        rendition.on?.("selected", (_cfiRange: string, contents: EpubContentsLike) => {
+          if (!active) return;
+          try {
+            const selection = contents?.window?.getSelection?.();
+            if (!selection || selection.isCollapsed) return;
+            const text = selection.toString().trim();
+            if (!text) return;
+            const iframeEl = containerRef.current?.querySelector("iframe");
+            const iframeRect = iframeEl?.getBoundingClientRect() ?? null;
+            const range = selection.getRangeAt(0);
+            const selRect = range.getBoundingClientRect();
+            const x = (iframeRect?.left ?? 0) + selRect.left + selRect.width / 2;
+            const y = (iframeRect?.top ?? 0) + selRect.top;
+            setSelectionPopup({ text, x, y });
+          } catch {
+            // ignore selection positioning errors
+          }
+        });
+
         const metadata = (await book.loaded?.metadata) || {};
         const titleFromBook = normalize(metadata?.title || metadata?.["dc:title"] || "");
         if (titleFromBook) setMetadataTitle(titleFromBook);
@@ -413,6 +446,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setCitationDraft("");
     setEditingCitationId(null);
     setEditingCitationDraft("");
+    setSelectionPopup(null);
+    setPendingCitationText(null);
     try {
       setBookmarks(loadBookmarks(url));
       setCitations(loadCitations(url));
@@ -525,11 +560,12 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
   const addCitation = () => {
     const note = citationDraft.trim();
-    if (!currentCfi || !note) return;
+    if (!currentCfi || (!note && !pendingCitationText)) return;
     const citation: ReaderCitation = {
       id: createId(),
       cfi: currentCfi,
       note,
+      quotedText: pendingCitationText ?? undefined,
       chapter: currentChapter || undefined,
       pageLabel: currentPageLabel || undefined,
       createdAt: Date.now()
@@ -538,6 +574,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setCitations(next);
     saveCitations(url, next);
     setCitationDraft("");
+    setPendingCitationText(null);
   };
 
   const removeCitation = (id: string) => {
@@ -578,9 +615,21 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   };
 
   const copyCitation = async (citation: ReaderCitation) => {
-    const page = citation.pageLabel ? ` (${citation.pageLabel})` : "";
-    const chapter = citation.chapter || "Untitled";
-    const payload = `${chapter}${page}\n${url}\n${citation.note}`;
+    const bookTitle = metadataTitle || title || undefined;
+    const header = [
+      citation.chapter || bookTitle,
+      citation.pageLabel ? `(${citation.pageLabel})` : undefined
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const rawIdentifier = readerInfo?.bookInfo?.identifier || undefined;
+    const workLink = formatIdentifierAsLink(rawIdentifier) ?? bookUrl ?? url;
+    const parts: string[] = [];
+    if (header) parts.push(header);
+    if (citation.quotedText) parts.push(`"${citation.quotedText}"`);
+    if (citation.note) parts.push(citation.note);
+    parts.push(workLink);
+    const payload = parts.join("\n");
     try {
       await navigator.clipboard.writeText(payload);
     } catch {
@@ -758,14 +807,48 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
           {tocTab === "annotations" && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {pendingCitationText && (
+                <Box
+                  sx={{
+                    borderLeft: "3px solid",
+                    borderColor: "ui.gray.medium",
+                    pl: 2,
+                    py: 1,
+                    background: "rgba(0,0,0,0.03)",
+                    borderRadius: "0 4px 4px 0"
+                  }}
+                >
+                  <Text
+                    variant="text.detail"
+                    sx={{ color: "ui.gray.dark", mb: 1 }}
+                  >
+                    Selected text:
+                  </Text>
+                  <Text
+                    variant="text.detail"
+                    sx={{ fontStyle: "italic", mb: 1 }}
+                  >
+                    &ldquo;{pendingCitationText}&rdquo;
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    color="text"
+                    onClick={() => setPendingCitationText(null)}
+                  >
+                    Remove
+                  </Button>
+                </Box>
+              )}
               <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                Add a note for the current location
+                {pendingCitationText
+                  ? "Add an optional note"
+                  : "Add a note for the current location"}
               </Text>
               <InputBox
                 as="textarea"
                 value={citationDraft}
                 onChange={e => setCitationDraft(e.target.value)}
-                placeholder="Type a note"
+                placeholder={pendingCitationText ? "Optional note..." : "Type a note"}
                 sx={{
                   width: "100%",
                   minHeight: 84,
@@ -779,7 +862,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
               />
               <Box>
                 <Button variant="ghost" color="text" onClick={addCitation}>
-                  Save note
+                  {pendingCitationText ? "Save citation" : "Save note"}
                 </Button>
               </Box>
 
@@ -863,9 +946,29 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                         </>
                       ) : (
                         <>
-                          <Text variant="text.detail" sx={{ mb: 2 }}>
-                            {citation.note}
-                          </Text>
+                          {citation.quotedText && (
+                            <Box
+                              sx={{
+                                borderLeft: "3px solid",
+                                borderColor: "ui.gray.medium",
+                                pl: 2,
+                                mb: 1,
+                                fontStyle: "italic"
+                              }}
+                            >
+                              <Text
+                                variant="text.detail"
+                                sx={{ color: "ui.gray.dark" }}
+                              >
+                                &ldquo;{citation.quotedText}&rdquo;
+                              </Text>
+                            </Box>
+                          )}
+                          {citation.note && (
+                            <Text variant="text.detail" sx={{ mb: 2 }}>
+                              {citation.note}
+                            </Text>
+                          )}
                           {citation.pageLabel && (
                             <Text variant="text.detail" sx={{ color: "ui.gray.dark", mb: 2 }}>
                               {citation.pageLabel}
@@ -1045,11 +1148,96 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           {progressLabel || " "}
         </Text>
       </Box>
+      {selectionPopup && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: selectionPopup.x,
+            top: selectionPopup.y - 52,
+            zIndex: 1000,
+            background: "var(--reader-chrome-bg, #ffffff)",
+            color: "var(--reader-chrome-text, #0f172a)",
+            border: "1px solid",
+            borderColor: "var(--reader-chrome-border, #e2e8f0)",
+            borderRadius: 8,
+            px: 1,
+            py: "4px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            display: "flex",
+            alignItems: "center",
+            transform: "translateX(-50%)",
+            pointerEvents: "all"
+          }}
+        >
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => {
+              setPendingCitationText(selectionPopup.text);
+              setCitationDraft("");
+              setShowToc(true);
+              setTocTab("annotations");
+              setShowSearch(false);
+              setShowDisplay(false);
+              setSelectionPopup(null);
+              // Clear the iframe selection
+              try {
+                const iframeEl = containerRef.current?.querySelector("iframe");
+                const iframeWin = (iframeEl as HTMLIFrameElement | null)
+                  ?.contentWindow;
+                iframeWin?.getSelection?.()?.removeAllRanges?.();
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            Create Citation
+          </Button>
+          <Box
+            sx={{
+              width: "1px",
+              alignSelf: "stretch",
+              background: "var(--reader-chrome-border, #e2e8f0)"
+            }}
+          />
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => setSelectionPopup(null)}
+          >
+            ✕
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 };
 
 export default EpubReader;
+
+// Returns the identifier only if it is a usable HTTP(S) URI.
+// URNs, UUIDs, and plain numbers are not meaningful citation links
+// and return undefined so callers fall back to bookUrl or the fulfillment URL.
+const formatIdentifierAsLink = (id: string | undefined): string | undefined => {
+  if (!id) return undefined;
+  const s = id.trim();
+  if (s.startsWith("https://") || s.startsWith("http://")) return s;
+  return undefined;
+};
 
 const resolveFontFamily = (choice: string) => {
   switch (choice) {

@@ -98,6 +98,7 @@ type PdfReaderProps = {
   url: string;
   authToken?: string;
   title?: string;
+  bookUrl?: string;
   setLoading: (value: boolean) => void;
 };
 
@@ -105,6 +106,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   url,
   authToken,
   title,
+  bookUrl,
   setLoading
 }) => {
   const objectUrlRef = React.useRef<string | null>(null);
@@ -586,6 +588,23 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     if (editingAnnotationId === id) {
       setEditingAnnotationId(null);
       setEditingAnnotationDraft("");
+    }
+  };
+
+  const copyAnnotation = async (annotation: PdfAnnotationItem) => {
+    const header = [title, `(Page ${annotation.pageNumber})`]
+      .filter(Boolean)
+      .join(" ");
+    const parts: string[] = [];
+    if (header) parts.push(header);
+    if (annotation.quotedText) parts.push(`"${annotation.quotedText}"`);
+    if (annotation.note) parts.push(annotation.note);
+    parts.push(bookUrl ?? url);
+    const payload = parts.join("\n");
+    try {
+      await navigator.clipboard.writeText(payload);
+    } catch {
+      // ignore clipboard errors
     }
   };
 
@@ -1115,6 +1134,13 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                   }
                                 >
                                   Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  color="text"
+                                  onClick={() => copyAnnotation(annotation)}
+                                >
+                                  Copy
                                 </Button>
                                 <Button
                                   variant="ghost"
