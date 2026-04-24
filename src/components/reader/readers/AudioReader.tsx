@@ -98,6 +98,8 @@ const sleep = (ms: number) =>
 const isCannotFulfillLoanError = (status: number, detail: string) =>
   status === 500 && detail.toLowerCase().includes("cannot-fulfill-loan");
 
+const CANNOT_FULFILL_SENTINEL = "cannot-fulfill-loan" as const;
+
 const formatTime = (seconds: number): string => {
   const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const hours = Math.floor(safe / 3600);
@@ -125,6 +127,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   setLoading
 }) => {
   const [error, setError] = React.useState<string | null>(null);
+  const [retryKey, setRetryKey] = React.useState(0);
   const [manifest, setManifest] =
     React.useState<ParsedAudiobookManifest | null>(null);
   const [trackIndex, setTrackIndex] = React.useState(0);
@@ -207,8 +210,10 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
           // Palace/local-CM can briefly return cannot-fulfill-loan immediately
           // after borrow while provider state is still syncing.
+          // Any fulfill endpoint can transiently return cannot-fulfill-loan
+          // while the CM syncs the new loan with the content vendor.
+          // Retry for all Palace fulfill URLs regardless of hostname.
           if (
-            (isLocalCmUrl(url) || isPalaceManagerLikeUrl(url)) &&
             isFulfillUrl(url) &&
             isCannotFulfillLoanError(response.status, detail)
           ) {
@@ -275,13 +280,16 @@ const AudioReader: React.FC<AudioReaderProps> = ({
               }
             }
 
-            // Local Palace development environments can take longer to promote
-            // a just-borrowed loan into a fulfillable audiobook manifest.
+            // Some content vendors take 30-90s to register a newly-borrowed
+            // loan before fulfillment is possible. Keep retrying with
+            // increasing back-off to cover slow vendor sync windows.
             if (
               !response.ok &&
               isCannotFulfillLoanError(response.status, detail)
             ) {
-              for (const waitMs of [1800, 2500, 3200, 4200, 5200]) {
+              for (const waitMs of [
+                2000, 3500, 5000, 7000, 10000, 15000, 20000
+              ]) {
                 await sleep(waitMs);
                 const getRetry = await fetch(initialRequest.url, {
                   headers: initialRequest.headers
@@ -302,13 +310,13 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           if (response.ok) {
             // Continue below with successful retried response.
           } else {
-            const suffix = isCannotFulfillLoanError(response.status, detail)
-              ? " (Palace Manager reports loan cannot be fulfilled yet)"
-              : "";
+            if (isCannotFulfillLoanError(response.status, detail)) {
+              throw new Error(CANNOT_FULFILL_SENTINEL);
+            }
             throw new Error(
               `Failed to load manifest (${response.status})${
                 detail ? `: ${detail.slice(0, 240)}` : ""
-              }${suffix}`
+              }`
             );
           }
         }
@@ -433,7 +441,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     return () => {
       active = false;
     };
-  }, [url, authToken, contentType, setLoading, storageKey]);
+  }, [url, authToken, contentType, setLoading, storageKey, retryKey]);
 
   React.useEffect(() => {
     try {
@@ -682,9 +690,31 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   );
 
   if (error) {
+    const isTransient = error === CANNOT_FULFILL_SENTINEL;
     return (
-      <Box sx={{ p: 3 }}>
-        <Text sx={{ color: "ui.error" }}>{error}</Text>
+      <Box
+        sx={{
+          p: 3,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          alignItems: "flex-start"
+        }}
+      >
+        <Text sx={{ color: isTransient ? "ui.gray.medium" : "ui.error" }}>
+          {isTransient
+            ? "Your audiobook is still being prepared by the library system. Please wait a moment and try again."
+            : error}
+        </Text>
+        <Button
+          onClick={() => {
+            setError(null);
+            setRetryKey(k => k + 1);
+          }}
+          variant="filled"
+        >
+          Try Again
+        </Button>
       </Box>
     );
   }

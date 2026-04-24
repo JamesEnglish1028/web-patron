@@ -14,6 +14,7 @@ import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { performBookSearch } from "utils/readerSearch";
 import {
   type ReaderBookmark,
@@ -201,8 +202,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(getProxiedUrl(url), {
-          headers: authToken ? { "X-Reader-Authorization": authToken } : undefined
+        const proxied = toBrowserFetchUrl(url);
+        const isLocalCm = proxied !== url;
+        const fetchUrl = isLocalCm ? proxied : getProxiedUrl(url);
+        const fetchHeaders: Record<string, string> = {};
+        if (authToken) {
+          fetchHeaders[isLocalCm ? "Authorization" : "X-Reader-Authorization"] = authToken;
+        }
+        const response = await fetch(fetchUrl, {
+          headers: Object.keys(fetchHeaders).length ? fetchHeaders : undefined
         });
         if (!response.ok) throw new Error(`Failed to load EPUB (${response.status})`);
 

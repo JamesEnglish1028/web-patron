@@ -340,8 +340,10 @@ const constructGetLocation =
     }
 
     if (indirectionType === OPDS1.BearerTokenMediaType) {
-      // Palace CM needs the patron's Basic credentials to identify them
-      // and proxy the bearer-token request to the content vendor.
+      // Palace CM can identify the patron via either Basic credentials or the
+      // session Bearer token. Prefer Basic when available (some deployments
+      // require it for the vendor proxy); fall back to Bearer for auth methods
+      // that issue only a Bearer token.
       const cmAuth = isPalaceManagerLikeUrl(resolvedUrl)
         ? options?.basicToken || token
         : token;
@@ -366,6 +368,8 @@ const constructGetLocation =
       ].includes(contentType)
     ) {
       if (isPalaceManagerLikeUrl(resolvedUrl)) {
+        // Prefer Basic credentials when available; fall back to Bearer token
+        // for auth methods that issue only a Palace Manager Bearer token.
         return {
           url: resolvedUrl,
           token: options?.basicToken || token

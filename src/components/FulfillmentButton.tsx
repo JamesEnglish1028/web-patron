@@ -26,9 +26,10 @@ import { isPalaceManagerLikeUrl } from "utils/fulfill";
 import Stack from "./Stack";
 
 /**
- * Palace CM fulfill endpoints need the patron's Basic auth credentials
- * (not the app-session Bearer token) to identify the patron and proxy
- * the bearer-token request to the content vendor.
+ * Palace CM fulfill endpoints accept either Basic credentials or a session
+ * Bearer token to identify the patron. Basic is preferred when available
+ * (some CM deployments require it for vendor proxy requests); Bearer is used
+ * as a fallback for auth methods that do not issue Basic credentials.
  */
 function getBasicToken(
   credentials: AuthCredentials | undefined
