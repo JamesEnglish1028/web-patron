@@ -747,8 +747,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       />
 
       {showToc && (
-        <Box sx={panelStyles.right}>
-          <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+        <Box sx={{ ...panelStyles.right, display: "flex", flexDirection: "column" }}>
+          <Box sx={{ display: "flex", gap: 2, mb: 2, flexShrink: 0 }}>
             {(
               [
                 { key: "toc", label: "TOC" },
@@ -768,7 +768,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           </Box>
 
           {tocTab === "toc" && (
-            <Box sx={{ overflowY: "auto", maxHeight: "60vh" }}>
+            <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
               {tocItems.length ? (
                 tocItems.map((item: EpubTocItem, index: number) => (
                   <TocItem
@@ -786,12 +786,21 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           )}
 
           {tocTab === "bookmarks" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Button variant="ghost" color="text" onClick={addBookmark}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Button variant="ghost" color="text" onClick={addBookmark} sx={{ flexShrink: 0 }}>
                 Bookmark current location
               </Button>
               {sortedBookmarks.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", maxHeight: "52vh", pr: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", flex: 1, minHeight: 0, pr: 1 }}>
                   {sortedBookmarks.map(bookmark => (
                     <Box
                       key={bookmark.id}
@@ -839,7 +848,16 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           )}
 
           {tocTab === "annotations" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
               {pendingCitationText && (
                 <Box
                   sx={{
@@ -900,7 +918,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
               </Box>
 
               {sortedCitations.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", flex: 1, minHeight: 0, pr: 1 }}>
                   {sortedCitations.map(citation => (
                     <Box
                       key={citation.id}

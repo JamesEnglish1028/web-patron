@@ -97,6 +97,11 @@ type PdfAnnotationItem = {
   createdAt: number;
 };
 
+type PdfSearchResult = {
+  pageNumber: number;
+  excerpt: string;
+};
+
 type PdfReaderProps = {
   url: string;
   authToken?: string;
@@ -153,6 +158,11 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const [tocActive, setTocActive] = React.useState(false);
   const [searchActive, setSearchActive] = React.useState(false);
   const [displayActive, setDisplayActive] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<PdfSearchResult[]>(
+    []
+  );
+  const [isSearching, setIsSearching] = React.useState(false);
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
   const [primaryTextData, setPrimaryTextData] =
     React.useState<TextLayerData | null>(null);
@@ -315,6 +325,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     setAnnotationDraft("");
     setEditingAnnotationId(null);
     setEditingAnnotationDraft("");
+    setSearchQuery("");
+    setSearchResults([]);
+    setIsSearching(false);
   }, [url]);
 
   React.useEffect(() => {
@@ -690,6 +703,51 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     }
   };
 
+  // --- PDF full-text search ---
+  // Iterates every page via pdfjs getTextContent(), concatenates extracted
+  // text items, and collects ±40-character excerpts for every match.
+  const runSearch = async () => {
+    if (!searchQuery.trim() || !pdfRef.current || isSearching) return;
+    const query = searchQuery.trim().toLowerCase();
+    setIsSearching(true);
+    setSearchResults([]);
+    try {
+      const pdf = pdfRef.current;
+      const results: PdfSearchResult[] = [];
+      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+        const page = await pdf.getPage(pageNo);
+        if (!page.getTextContent) continue;
+        try {
+          const textContent = await page.getTextContent();
+          const text = textContent.items.map(item => item.str).join(" ");
+          const lower = text.toLowerCase();
+          let pos = 0;
+          while ((pos = lower.indexOf(query, pos)) !== -1) {
+            const start = Math.max(0, pos - 40);
+            const end = Math.min(text.length, pos + query.length + 40);
+            const excerpt =
+              (start > 0 ? "\u2026" : "") +
+              text.slice(start, end) +
+              (end < text.length ? "\u2026" : "");
+            results.push({ pageNumber: pageNo, excerpt });
+            pos += query.length;
+            // Cap at 3 results per page so the list stays scannable
+            if (results.filter(r => r.pageNumber === pageNo).length >= 3) break;
+          }
+          // Stop after 200 total results to avoid flooding the panel
+          if (results.length >= 200) break;
+        } catch {
+          // text content unavailable for this page
+        }
+      }
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const handleTextLayerMouseUp = React.useCallback(
     (event: React.MouseEvent) => {
       const selection = window.getSelection();
@@ -944,7 +1002,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             zIndex: 20,
             width: "min(360px, calc(100vw - 32px))",
             maxHeight: "70vh",
-            overflowY: "auto",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
             background: "var(--reader-chrome-bg, #ffffff)",
             border: "1px solid",
             borderColor: "var(--reader-chrome-border, #e2e8f0)",
@@ -954,8 +1014,17 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           }}
         >
           {tocActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Box sx={{ display: "flex", gap: 2, mb: 1, flexShrink: 0 }}>
                 {(
                   [
                     { key: "toc", label: "TOC" },
@@ -978,7 +1047,14 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                 <>
                   {tocItems.length > 0 ? (
                     <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                        overflowY: "auto",
+                        flex: 1,
+                        minHeight: 0
+                      }}
                     >
                       <PdfTocTree
                         items={tocItems}
@@ -1004,7 +1080,16 @@ const PdfReader: React.FC<PdfReaderProps> = ({
               )}
 
               {tocTab === "bookmarks" && (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "hidden"
+                  }}
+                >
                   <Button variant="ghost" color="text" onClick={addBookmark}>
                     Bookmark current page
                   </Button>
@@ -1015,7 +1100,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                         flexDirection: "column",
                         gap: 1,
                         overflowY: "auto",
-                        maxHeight: "52vh",
+                        flex: 1,
+                        minHeight: 0,
                         pr: 1
                       }}
                     >
@@ -1087,6 +1173,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     display: "flex",
                     flexDirection: "column",
                     gap: 2,
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "hidden",
                     "& .pdf-annotation-input": { width: "100%", minHeight: 84 }
                   }}
                 >
@@ -1146,7 +1235,15 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                   </Box>
                   {annotations.length > 0 ? (
                     <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                        overflowY: "auto",
+                        flex: 1,
+                        minHeight: 0,
+                        pr: 1
+                      }}
                     >
                       {annotations
                         .slice()
@@ -1298,17 +1395,134 @@ const PdfReader: React.FC<PdfReaderProps> = ({
           )}
 
           {searchActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Text variant="text.headers.primary">Search</Text>
-              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                Full-text PDF search panel is not wired yet in this custom
-                canvas mode.
-              </Text>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 2,
+                  flexShrink: 0,
+                  "& .pdf-search-input": {
+                    flex: 1,
+                    border: "1px solid",
+                    borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                    borderRadius: 8,
+                    px: 2,
+                    py: "6px",
+                    fontSize: 14,
+                    background: "transparent",
+                    color: "var(--reader-chrome-text, inherit)",
+                    outline: "none"
+                  }
+                }}
+              >
+                <input
+                  className="pdf-search-input"
+                  type="search"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") void runSearch();
+                  }}
+                  placeholder="Search in book"
+                  aria-label="Search in book"
+                />
+                <Button
+                  variant="ghost"
+                  color="text"
+                  onClick={() => void runSearch()}
+                  disabled={isSearching || !searchQuery.trim()}
+                >
+                  {isSearching ? "Searching\u2026" : "Search"}
+                </Button>
+              </Box>
+              <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+                {searchResults.length > 0 ? (
+                  <Box
+                    sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
+                    {searchResults.map((result, index) => (
+                      <Box
+                        key={`${result.pageNumber}-${index}`}
+                        role="button"
+                        tabIndex={0}
+                        sx={{
+                          p: 2,
+                          border: "1px solid",
+                          borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          "&:hover": { background: "rgba(0,0,0,0.04)" },
+                          "&:focus-visible": {
+                            outline: "2px solid",
+                            outlineColor: "brand.primary"
+                          }
+                        }}
+                        onClick={() => {
+                          const alignedPage =
+                            pageView === "spread" && result.pageNumber % 2 === 0
+                              ? Math.max(1, result.pageNumber - 1)
+                              : result.pageNumber;
+                          setPageNumber(alignedPage);
+                          setSearchActive(false);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            const alignedPage =
+                              pageView === "spread" &&
+                              result.pageNumber % 2 === 0
+                                ? Math.max(1, result.pageNumber - 1)
+                                : result.pageNumber;
+                            setPageNumber(alignedPage);
+                            setSearchActive(false);
+                          }
+                        }}
+                      >
+                        <Text
+                          variant="text.detail"
+                          sx={{ color: "ui.gray.dark", mb: 1 }}
+                        >
+                          Page {result.pageNumber}
+                        </Text>
+                        <Text variant="text.body.regular">
+                          {result.excerpt}
+                        </Text>
+                      </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                    {isSearching
+                      ? "Searching\u2026"
+                      : searchQuery.trim()
+                        ? "No results found."
+                        : "Enter a search term above."}
+                  </Text>
+                )}
+              </Box>
             </Box>
           )}
 
           {displayActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+                flex: 1,
+                overflowY: "auto",
+                minHeight: 0
+              }}
+            >
               <Text variant="text.headers.primary">Display</Text>
               <Box>
                 <Text
@@ -1353,7 +1567,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             </Box>
           )}
 
-          <Box sx={{ mt: 3 }}>
+          <Box sx={{ mt: 3, flexShrink: 0 }}>
             <Button variant="ghost" color="text" onClick={closePanels}>
               Close
             </Button>
