@@ -47,10 +47,11 @@
     "@theme-ui/mdx": "^0.17.2",
     "@thepalaceproject/reader": "file:packages/reader",
     "@thepalaceproject/webpub-viewer": "^0.1.0",
+    "arktype": "^2.2.0",
     "chalk": "^4.1.0",
     "date-fns": "^4.1.0",
     "deepmerge": "^4.2.2",
-    "dompurify": "^3.3.2",
+    "dompurify": "^3.4.0",
     "downloadjs": "^1.4.7",
     "epubjs": "^0.3.93",
     "history": "^4.10.1",
@@ -70,7 +71,8 @@
     "styled-system": "^5.1.2",
     "swr": "^2.4.1",
     "theme-ui": "^0.17.2",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "yaml": "^1.10.3"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
@@ -116,8 +118,7 @@
     "msw": "^2.6.5",
     "prettier": "^3.6.2",
     "react-is": "^19.2.4",
-    "typescript": "^5.9.3",
-    "webpack-bugsnag-plugins": "^1.8.0"
+    "typescript": "^5.9.3"
   },
   "prettier": {
     "arrowParens": "avoid",

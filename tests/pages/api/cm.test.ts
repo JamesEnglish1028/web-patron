@@ -1,5 +1,5 @@
 import { Readable } from "stream";
-import handler from "../cm";
+import handler from "pages/api/cm";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type MockResponse = NextApiResponse & {

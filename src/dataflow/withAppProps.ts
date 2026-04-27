@@ -1,4 +1,4 @@
-import { LibraryData, OPDS1 } from "../interfaces";
+import { AppConfig, LibraryData, OPDS1 } from "../interfaces";
 import { GetStaticProps, GetStaticPropsContext } from "next";
 import {
   getAuthDocUrl,
@@ -10,9 +10,11 @@ import ApplicationError, { PageNotFoundError } from "errors";
 import extractParam from "dataflow/utils";
 import { ParsedUrlQuery } from "querystring";
 import track from "analytics/track";
+import { getAppConfig } from "server/appConfig";
 
 export type AppProps = {
   library?: LibraryData;
+  appConfig?: AppConfig;
   error?: OPDS1.ProblemDocument;
 };
 
@@ -31,6 +33,7 @@ export default function withAppProps(
           "A library slug is required to be provided in the URL. Eg: https://domain.com/:library"
         );
 
+      const appConfig = await getAppConfig();
       const authDocUrl = await getAuthDocUrl(librarySlug);
       const authDocument = await fetchAuthDocument(authDocUrl);
       const resolvedCatalogUrl = await resolveCatalogUrl(
@@ -50,7 +53,8 @@ export default function withAppProps(
         ...pageResult,
         props: {
           ...pageProps,
-          library
+          library,
+          appConfig
         },
         // revalidate library-wide data once per hour per route
         revalidate: 60 * 60

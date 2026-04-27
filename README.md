@@ -39,6 +39,8 @@ __To have your library added to the demo, register it with NYPL's Library Regist
   <!-- * [Demo](#community-demo) -->
 - [Configuring the App](#configuring-the-app)
   - [Configuration File](#configuration-file)
+    - [Configuration Options](#configuration-options)
+    - [Media Support](#media-support)
   - [Environment Variables](#environment-variables)
   - [Manager, Registry, and Application Configurations](#manager--registry--and-application-configurations)
   - [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings)
@@ -65,9 +67,31 @@ __To have your library added to the demo, register it with NYPL's Library Regist
 
 ## Configuration File
 
-To deploy the application, there are a few configuration variables that need to be set up. Most notably, the app needs to know what libraries to support and the url for each library's Circulation Manager backend. This is called the authentication document url, and each library the app runs has a unique authentication document url. Additionally, the app needs to know which media formats to support, and how. Finally, there are a few other variables that can be configured.
+The app is configured with a YAML file. Point the app at it by setting the `CONFIG_FILE` environment variable to a local path or HTTP(S) URL. `./community-config.yml` is a fully-annotated example covering all options.
 
-The production configuration is defined in a YAML config file. You can find more details on the options in the `./community-config.yml` file. To run the app, you must tell it where to find the config file. This is done via the `CONFIG_FILE` environment variable. If you don't set anything, the sample config is used. See [environment variables](#environment-variables) below for more information.
+### Configuration Options
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `instance_name` | string | `"Patron Web Catalog"` | Name used in error tracking and debug output. Not patron-facing. |
+| `companion_app` | `"simplye"` \| `"openebooks"` | `"simplye"` | Selects which companion mobile app to reference in redirect prompts. |
+| `show_medium` | boolean | `true` | Whether to display the medium (e-book, audiobook, etc.) label on book cards. |
+| `bugsnag_api_key` | string | — | Bugsnag project API key. Omit to disable error tracking. |
+| `gtmId` | string | — | Google Tag Manager container ID (e.g. `GTM-XXXX`). Omit to disable analytics. |
+| `media_support` | mapping | `{}` | Per-MIME-type rendering mode. See [Media Support](#media-support) below. |
+| `staticLibraries` | mapping | — | Static library definitions. See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
+| `registries` | list | `[]` | One or more library registry URLs fetched at runtime. See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
+| `libraries` | mapping or string | — | **Deprecated.** Use `staticLibraries` (mapping) or `registries` (string). See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
+
+### Media Support
+
+Each entry in `media_support` maps a MIME type to one of three rendering modes:
+
+- **`show`** — Read the book in the web app.
+- **`redirect`** — Display a prompt directing the patron to the companion mobile app.
+- **`redirect-and-show`** — Offer both options.
+
+Any MIME type not listed is treated as unsupported and hidden from patrons. See `community-config.yml` for a full list of common types and their recommended settings.
 
 ## Environment Variables
 
@@ -109,7 +133,7 @@ Define libraries directly in your configuration file as a dictionary mapping lib
 
 **Simple Format:**
 ```yaml
-libraries:
+staticLibraries:
   my-library: https://circulation.example.com/my-library/authentication_document
   another-lib: https://circulation.example.com/another-lib/authentication_document
 ```
@@ -119,7 +143,7 @@ libraries:
 You can also specify a custom display title for each library that will appear on the multi-library selection page:
 
 ```yaml
-libraries:
+staticLibraries:
   my-library:
     authDocUrl: https://circulation.example.com/my-library/authentication_document
     title: "My Public Library"
@@ -161,7 +185,7 @@ registries:
 Combine static libraries with registry-based libraries. Static library definitions always take precedence over registry entries when slugs conflict:
 
 ```yaml
-libraries:
+staticLibraries:
   featured-library:
     authDocUrl: https://circulation.example.com/featured/authentication_document
     title: "Featured Library"
@@ -171,17 +195,35 @@ registries:
 
 In this example, if the registry also contains a library with slug `featured-library`, the static definition will be used instead.
 
-#### Deprecated Format
+#### Deprecated Formats
 
-**⚠️ The following format is deprecated, but is still supported for backward compatibility:**
+**⚠️ The following formats are deprecated, but are temporarily supported for backward compatibility:**
 
+Using an object for `libraries` to define static libraries:
 ```yaml
+# DEPRECATED — rename to staticLibraries
+libraries:
+  my-library: https://circulation.example.com/my-library/authentication_document
+```
+
+Using a string for `libraries` to specify a registry URL:
+```yaml
+# DEPRECATED — use registries array instead
 libraries: https://registry.example.com/libraries
 ```
 
-This string format fetches libraries from a registry at build time only. Please migrate to the `registries` array format shown above for better control and future runtime fetching support.
+**Migration from object `libraries`:**
+```yaml
+# OLD (deprecated):
+libraries:
+  my-library: https://circulation.example.com/my-library/authentication_document
 
-**Migration Example:**
+# NEW (recommended):
+staticLibraries:
+  my-library: https://circulation.example.com/my-library/authentication_document
+```
+
+**Migration from string `libraries`:**
 ```yaml
 # OLD (deprecated):
 libraries: https://registry.thepalaceproject.org/libraries

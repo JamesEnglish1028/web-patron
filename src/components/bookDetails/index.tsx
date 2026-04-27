@@ -17,10 +17,11 @@ import useSWR from "swr";
 import { fetchBook } from "dataflow/opds1/fetch";
 import useUser from "components/context/UserContext";
 import useBreadcrumbContext from "components/context/BreadcrumbContext";
-import { APP_CONFIG } from "utils/env";
+import { useAppConfig } from "components/context/AppConfigContext";
 import { getAuthors } from "utils/book";
 
 export const BookDetails: React.FC = () => {
+  const { showMedium } = useAppConfig();
   const { query } = useRouter();
   const bookUrl = extractParam(query, "bookUrl");
   const { data, error } = useSWR(bookUrl ?? null, fetchBook);
@@ -83,7 +84,7 @@ export const BookDetails: React.FC = () => {
                 {getAuthors(book)?.join(", ") ?? "Unknown"}
               </Text>
             </div>
-            {APP_CONFIG.showMedium && <MediumIndicator book={book} />}
+            {showMedium && <MediumIndicator book={book} />}
             <FulfillmentCard book={book} sx={{ mt: 3 }} />
             <Summary book={book} />
             <dl

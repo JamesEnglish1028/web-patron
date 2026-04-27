@@ -163,7 +163,8 @@ module.exports = {
     "/.next/",
     // These run separately with jest.config.node.js (via test:ci)
     "/src/config/__tests__/",
-    "/src/pages/api/__tests__/"
+    "/src/server/__tests__/",
+    "/tests/pages/"
   ],
 
   // The regexp pattern or array of patterns that Jest uses to detect test files
@@ -191,13 +192,26 @@ module.exports = {
     printBasicPrototype: true
   },
 
-  // A map from regular expressions to paths to transformers
-  // transform: undefined,
+  // Use babel-jest with the Next.js preset for TSX/JSX transforms.
+  // Defined here (not in babel.config.js) so the Next.js build can use SWC.
+  transform: {
+    "^.+\\.(js|jsx|ts|tsx)$": [
+      "babel-jest",
+      {
+        presets: [
+          [
+            "next/babel",
+            {
+              "preset-react": { runtime: "automatic", importSource: "theme-ui" }
+            }
+          ]
+        ]
+      }
+    ]
+  },
 
-  // An array of regexp pattern strings that are matched against all source file paths, matched files will skip transformation
-  // transformIgnorePatterns: [
-  //   "/node_modules/"
-  // ],
+  // arktype and its ark*/@ark/* dependencies ship as ESM and must be transformed.
+  transformIgnorePatterns: ["/node_modules/(?!(arktype|arkregex|@ark)/)"],
 
   // An array of regexp pattern strings that are matched against all modules before the module loader will automatically return a mock for them
   // unmockedModulePathPatterns: undefined,

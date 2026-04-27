@@ -1,10 +1,26 @@
 import * as React from "react";
 import { render, screen } from "test-utils";
 import MultiLibraryHome from "../MultiLibraryHome";
-import * as envModule from "utils/env";
+import useSWR from "swr";
+import { makeSwrResponse } from "test-utils/mockSwr";
+import type { LibrariesResponse } from "pages/api/libraries";
 
-// Mock the entire module
-jest.mock("utils/env");
+jest.mock("swr");
+
+const mockedSWR = useSWR as jest.MockedFunction<typeof useSWR>;
+
+function mockLibraries(libraries: LibrariesResponse["libraries"]) {
+  mockedSWR.mockReturnValue(makeSwrResponse<any>({ data: { libraries } }));
+}
+
+function lib(slug: string, title?: string) {
+  return {
+    id: `urn:${slug}`,
+    slug,
+    title: title ?? slug,
+    authDocUrl: `https://example.com/${slug}/auth`
+  };
+}
 
 describe("MultiLibraryHome", () => {
   afterEach(() => {
@@ -12,30 +28,11 @@ describe("MultiLibraryHome", () => {
   });
 
   it("displays libraries sorted by title in ascending order", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "Test Instance",
-      libraries: {
-        zebra: {
-          title: "Zebra Library",
-          authDocUrl: "https://example.com/zebra/auth"
-        },
-        alpha: {
-          title: "Alpha Library",
-          authDocUrl: "https://example.com/alpha/auth"
-        },
-        middle: {
-          title: "Middle Library",
-          authDocUrl: "https://example.com/middle/auth"
-        }
-      },
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+    mockLibraries([
+      lib("zebra", "Zebra Library"),
+      lib("alpha", "Alpha Library"),
+      lib("middle", "Middle Library")
+    ]);
 
     render(<MultiLibraryHome />);
 
@@ -46,28 +43,7 @@ describe("MultiLibraryHome", () => {
   });
 
   it("displays libraries sorted by slug when no title is provided", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "Test Instance",
-      libraries: {
-        zebra: {
-          authDocUrl: "https://example.com/zebra/auth"
-        },
-        alpha: {
-          authDocUrl: "https://example.com/alpha/auth"
-        },
-        middle: {
-          title: "middle",
-          authDocUrl: "https://example.com/middle/auth"
-        }
-      },
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+    mockLibraries([lib("zebra"), lib("alpha"), lib("middle")]);
 
     render(<MultiLibraryHome />);
 
@@ -78,32 +54,12 @@ describe("MultiLibraryHome", () => {
   });
 
   it("displays libraries sorted by effective title (mix of custom titles and slugs)", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "Test Instance",
-      libraries: {
-        "003": {
-          authDocUrl: "https://example.com/003/auth"
-        },
-        beta: {
-          title: "Charlie Library",
-          authDocUrl: "https://example.com/beta/auth"
-        },
-        alpha: {
-          title: "Bravo Library",
-          authDocUrl: "https://example.com/alpha/auth"
-        },
-        "001": {
-          authDocUrl: "https://example.com/001/auth"
-        }
-      },
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+    mockLibraries([
+      lib("003"),
+      lib("beta", "Charlie Library"),
+      lib("alpha", "Bravo Library"),
+      lib("001")
+    ]);
 
     render(<MultiLibraryHome />);
 
@@ -115,34 +71,7 @@ describe("MultiLibraryHome", () => {
   });
 
   it("handles quoted numeric slugs with leading zeros correctly", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "Test Instance",
-      libraries: {
-        "020": {
-          title: "020",
-          authDocUrl: "https://example.com/020/auth"
-        },
-        "003": {
-          title: "003",
-          authDocUrl: "https://example.com/003/auth"
-        },
-        "001": {
-          title: "001",
-          authDocUrl: "https://example.com/001/auth"
-        },
-        "100": {
-          title: "100",
-          authDocUrl: "https://example.com/100/auth"
-        }
-      },
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+    mockLibraries([lib("020"), lib("003"), lib("001"), lib("100")]);
 
     render(<MultiLibraryHome />);
 
@@ -154,41 +83,41 @@ describe("MultiLibraryHome", () => {
   });
 
   it("returns null when there are no libraries", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "Test Instance",
-      libraries: {},
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+    mockLibraries([]);
 
     const { container } = render(<MultiLibraryHome />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("displays instance name in heading", () => {
-    (envModule.APP_CONFIG as any) = {
-      instanceName: "My Custom Instance",
-      libraries: {
-        test: {
-          title: "Test Library",
-          authDocUrl: "https://example.com/test/auth"
-        }
-      },
-      mediaSupport: {},
-      bugsnagApiKey: null,
-      gtmId: null,
-      companionApp: "simplye",
-      showMedium: true,
-      openebooks: null,
-      registries: []
-    };
+  it("returns null while loading", () => {
+    mockedSWR.mockReturnValue(makeSwrResponse<any>({ data: undefined }));
+
+    const { container } = render(<MultiLibraryHome />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("displays an error message on fetch error", () => {
+    mockedSWR.mockReturnValue(
+      makeSwrResponse<any>({
+        data: undefined,
+        error: new Error("fetch failed")
+      })
+    );
 
     render(<MultiLibraryHome />);
+    expect(
+      screen.getByText(
+        "Unable to load static libraries from configuration file."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("displays instance name in heading", () => {
+    mockLibraries([lib("test", "Test Library")]);
+
+    render(<MultiLibraryHome />, {
+      appConfig: { instanceName: "My Custom Instance" }
+    });
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "My Custom Instance Home"

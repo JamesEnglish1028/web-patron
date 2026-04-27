@@ -5,6 +5,7 @@ import {
   CollectionData,
   FulfillableBook,
   FulfillmentLink,
+  MediaSupportConfig,
   MediaSupportLevel,
   OPDS1
 } from "interfaces";
@@ -13,7 +14,13 @@ import fetchWithHeaders from "dataflow/fetch";
 import parseSearchData from "dataflow/opds1/parseSearchData";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { getProxiedUrl } from "utils/proxyUrl";
-import { APP_CONFIG } from "utils/env";
+
+let _mediaSupport: MediaSupportConfig = {};
+
+/** Sets the media-support config. Called once at app startup from _app.tsx. */
+export function setFetchMediaSupportConfig(config: MediaSupportConfig): void {
+  _mediaSupport = config;
+}
 
 const parser = new OPDSParser();
 /**
@@ -151,12 +158,11 @@ function getMediaSupportLevel(
   contentType: string,
   indirectionType?: string
 ): MediaSupportLevel {
-  const { mediaSupport } = APP_CONFIG;
-  const defaultLevel: MediaSupportLevel = mediaSupport?.default ?? "unsupported";
+  const defaultLevel: MediaSupportLevel = _mediaSupport?.default ?? "unsupported";
   if (indirectionType) {
-    return (mediaSupport[indirectionType]?.[contentType] as MediaSupportLevel) ?? defaultLevel;
+    return (_mediaSupport[indirectionType]?.[contentType] as MediaSupportLevel) ?? defaultLevel;
   }
-  return (mediaSupport[contentType] as MediaSupportLevel) ?? defaultLevel;
+  return (_mediaSupport[contentType] as MediaSupportLevel) ?? defaultLevel;
 }
 
 /**

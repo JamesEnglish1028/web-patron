@@ -1,12 +1,6 @@
-const {
-  BugsnagBuildReporterPlugin,
-  BugsnagSourceMapUploaderPlugin
-} = require("webpack-bugsnag-plugins");
-const path = require("path");
 const chalk = require("chalk");
-const execSync = require("child_process").execSync;
 const { readVersionInfo } = require("./src/config/read-version");
-const { NODE_ENV, CONFIG_FILE, REACT_AXE } = process.env;
+const { NODE_ENV, REACT_AXE } = process.env;
 
 const log = (...message) =>
   console.log(chalk.blue("app info") + "  -", ...message);
@@ -29,44 +23,13 @@ const RELEASE_STAGE =
 const BUILD_ID =
   process.env.BUILD_ID || `${APP_VERSION}-${GIT_BRANCH}.${GIT_COMMIT_SHA}`;
 
-// fetch the config file synchronously. This will wait until the command exits to continue.
-const APP_CONFIG = JSON.parse(
-  execSync("node --unhandled-rejections=strict src/config/fetch-config.js", {
-    encoding: "utf-8",
-    env: {
-      ...process.env,
-      CONFIG_FILE
-    }
-  })
-);
-
 // log some info to the console for the record.
-log(`Instance Name: ${APP_CONFIG.instanceName}`);
-log(`CONFIG_FILE: ${CONFIG_FILE}`);
+log(`CONFIG_FILE: ${process.env.CONFIG_FILE ?? "(resolved at runtime)"}`);
 log(`GIT_BRANCH: ${GIT_BRANCH}`);
 log(`APP_VERSION: ${APP_VERSION}`);
 log(`NODE_ENV: ${NODE_ENV}`);
 log(`RELEASE_STAGE: ${RELEASE_STAGE}`);
 log(`BUILD_ID: ${BUILD_ID}`);
-log(`Companion App: ${APP_CONFIG.companionApp}`);
-log(`Show Medium: ${APP_CONFIG.showMedium ? "enabled" : "disabled"}`);
-log(
-  `Google Tag Manager: ${
-    APP_CONFIG.gtmId
-      ? `enabled - ${APP_CONFIG.gtmId}`
-      : "disabled (no gtm_id in config file)"
-  }`
-);
-log(
-  `Bugsnag: ${
-    APP_CONFIG.bugsnagApiKey
-      ? `enabled - ${APP_CONFIG.bugsnagApiKey}`
-      : "disabled (no bugsnag_api_key in config file)"
-  }`
-);
-log(`Open eBooks Config: `, APP_CONFIG.openebooks);
-log(`Media Support: `, APP_CONFIG.mediaSupport);
-log(`Libraries: `, APP_CONFIG.libraries);
 
 // Point pdfjs-dist to the top-level package so it is NOT inside react-pdf's
 // node_modules path — this keeps Babel (transpilePackages:"react-pdf") from
@@ -74,21 +37,18 @@ log(`Libraries: `, APP_CONFIG.libraries);
 const topLevelPdfJsEntry = require.resolve("pdfjs-dist");
 
 const config = {
+  output: "standalone",
   transpilePackages: [
     "@thepalaceproject/webpub-viewer",
     "@thepalaceproject/reader"
   ],
-  distDir: "_next",
-  outputFileTracingRoot: path.resolve(__dirname),
   env: {
-    CONFIG_FILE,
     REACT_AXE,
     APP_VERSION: APP_VERSION ?? undefined,
     BUILD_ID,
     GIT_BRANCH: GIT_BRANCH ?? undefined,
     GIT_COMMIT_SHA: GIT_COMMIT_SHA ?? undefined,
-    RELEASE_STAGE,
-    APP_CONFIG: JSON.stringify(APP_CONFIG)
+    RELEASE_STAGE
   },
   async rewrites() {
     return [{ source: "/version.json", destination: "/api/version.json" }];
@@ -108,6 +68,11 @@ const config = {
       config.plugins.push(
         new webpack.IgnorePlugin({ resourceRegExp: /jsdom$/ })
       );
+    // react-axe should only be bundled when REACT_AXE=true
+    !REACT_AXE === "true" &&
+      config.plugins.push(
+        new webpack.IgnorePlugin({ resourceRegExp: /react-axe$/ })
+      );
     // Fixes dependency on "fs" module.
     // We don't (and can't) depend on this in client-side code.
     if (!isServer) {
@@ -119,22 +84,6 @@ const config = {
       "pdfjs-dist$": topLevelPdfJsEntry
     };
 
-    // upload sourcemaps to bugsnag if we are not in dev
-    if (!dev && APP_CONFIG.bugsnagApiKey) {
-      const bugsnagConfig = {
-        apiKey: APP_CONFIG.bugsnagApiKey,
-        appVersion: BUILD_ID
-      };
-      config.plugins.push(new BugsnagBuildReporterPlugin(bugsnagConfig));
-      config.plugins.push(
-        new BugsnagSourceMapUploaderPlugin({
-          ...bugsnagConfig,
-          publicPath: isServer ? "" : "*/_next",
-          overwrite: true
-        })
-      );
-    }
-
     return config;
   }
 };
@@ -142,4 +91,14 @@ const config = {
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true"
 });
-module.exports = withBundleAnalyzer(config);
+module.exports = {
+  ...withBundleAnalyzer(config),
+  distDir: "_next",
+  generateBuildId: async () => {
+    if (process.env.BUILD_ID) {
+      return process.env.BUILD_ID;
+    } else {
+      return `${new Date().getTime()}`;
+    }
+  }
+};
