@@ -22,132 +22,26 @@ import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { performBookSearch } from "utils/readerSearch";
 import {
-  type ReaderBookmark,
-  type ReaderCitation,
   loadBookmarks,
   saveBookmarks,
   loadCitations,
   saveCitations,
-  createId
 } from "utils/readerAnnotations";
 import { useAnnotationSync } from "hooks/useAnnotationSync";
-
-// --- epubjs type shims ---
-// epubjs ships no TypeScript types. These interfaces describe only the subset
-// of the API that EpubReader uses. All fields are optional so the casts remain
-// safe if an older or newer epubjs version omits a method.
-
-type InputBoxProps =
-  | ({ as: "input" } & React.InputHTMLAttributes<HTMLInputElement> & {
-        sx?: ThemeUIStyleObject;
-      })
-  | ({ as: "textarea" } & React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
-        sx?: ThemeUIStyleObject;
-      });
+import { useEpubAnnotations } from "hooks/useEpubAnnotations";
+import {
+  type EpubReaderProps,
+  type EpubSpineItem,
+  type EpubTocItem,
+  type EpubSearchResult,
+  type EpubRelocation,
+  type EpubContentsLike,
+  type EpubRenditionLike,
+  type EpubBookLike,
+  type InputBoxProps
+} from "./EpubReader.types";
 
 const InputBox = Box as unknown as React.FC<InputBoxProps>;
-
-type EpubReaderProps = {
-  url: string;
-  authToken?: string;
-  title?: string;
-  bookUrl?: string;
-  setLoading: (value: boolean) => void;
-};
-
-type EpubSpineItem = {
-  href?: string;
-  cfiBase?: string;
-};
-
-type EpubTocItem = {
-  id?: string;
-  label?: string;
-  title?: string;
-  href?: string;
-  cfi?: string;
-  subitems?: EpubTocItem[];
-  pageNumber?: number;
-  locationIndex?: number;
-};
-
-type EpubSearchResult = {
-  cfi?: string;
-  excerpt?: string;
-  text?: string;
-};
-
-type EpubRelocation = {
-  start?: {
-    cfi?: string;
-    href?: string;
-    displayed?: {
-      page?: number;
-      total?: number;
-    };
-  };
-};
-
-type EpubThemesApi = {
-  select?: (theme: "light" | "dark") => void;
-  register?: (themeName: string, rules: Record<string, unknown>) => void;
-  fontSize?: (size: string) => void;
-  font?: (fontFamily: string) => void;
-};
-
-type EpubContentsLike = {
-  // epubjs Contents exposes the iframe document directly and via .window
-  document?: Document;
-  window?: Window & typeof globalThis;
-  // addStylesheetCss(css, key) injects a <style> into the content document
-  addStylesheetCss?: (css: string, key: string) => void;
-};
-
-type EpubRenditionLike = {
-  themes?: EpubThemesApi;
-  views?: () => Array<{ document?: Document }>;
-  on?: (event: string, callback: (...args: any[]) => void) => void;
-  display: (target?: string) => Promise<unknown> | unknown;
-  prev?: () => void;
-  next?: () => void;
-  spread?: (mode: "auto" | "none") => void;
-  destroy?: () => void;
-  hooks?: {
-    content?: {
-      register?: (fn: (contents: EpubContentsLike) => void) => void;
-    };
-  };
-};
-
-type EpubBookLike = {
-  locations?: {
-    generate?: (chars?: number) => Promise<unknown> | unknown;
-    locationFromCfi?: (cfi: string) => unknown;
-    percentageFromCfi?: (cfi: string) => number | undefined;
-    length?: () => number;
-  };
-  spine?: {
-    spineItems?: EpubSpineItem[];
-  };
-  navigation?: {
-    toc?: EpubTocItem[];
-  };
-  loaded?: {
-    metadata?: Promise<Record<string, unknown>>;
-    navigation?: Promise<{ toc?: EpubTocItem[] }>;
-  };
-  renderTo?: (
-    element: Element,
-    options: {
-      width: string;
-      height: string;
-      flow: string;
-      spread: "auto" | "none";
-    }
-  ) => EpubRenditionLike;
-  coverUrl?: () => Promise<string> | string;
-  destroy?: () => void;
-};
 
 // --- EpubReader ---
 
@@ -190,14 +84,34 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [currentCfi, setCurrentCfi] = React.useState("");
   const [currentHref, setCurrentHref] = React.useState("");
   const [currentPageLabel, setCurrentPageLabel] = React.useState("");
-  const [bookmarks, setBookmarks] = React.useState<ReaderBookmark[]>([]);
-  const [citations, setCitations] = React.useState<ReaderCitation[]>([]);
-  const [citationDraft, setCitationDraft] = React.useState("");
-  const [editingCitationId, setEditingCitationId] = React.useState<
-    string | null
-  >(null);
-  const [editingCitationDraft, setEditingCitationDraft] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
+
+  // Annotation management via hook
+  const {
+    bookmarks,
+    setBookmarks,
+    citations,
+    setCitations,
+    citationDraft,
+    setCitationDraft,
+    editingCitationId,
+    setEditingCitationId,
+    editingCitationDraft,
+    setEditingCitationDraft,
+    pendingCitationText,
+    setPendingCitationText,
+    sortedBookmarks,
+    sortedCitations,
+    bookmarkActive,
+    addBookmark,
+    removeBookmark,
+    addCitation,
+    removeCitation,
+    beginCitationEdit,
+    cancelCitationEdit,
+    saveCitationEdit,
+    copyCitation
+  } = useEpubAnnotations(url, currentCfi, currentChapter, currentPageLabel, bookRef, metadataTitle, title, annotationSync);
   const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>(
     []
   );
@@ -207,9 +121,6 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     x: number;
     y: number;
   } | null>(null);
-  const [pendingCitationText, setPendingCitationText] = React.useState<
-    string | null
-  >(null);
 
   const searchInProgressRef = React.useRef(false);
   const displayPanelRef = React.useRef<HTMLDivElement | null>(null);
@@ -695,182 +606,6 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setShowSearch(false);
   };
 
-  // --- Bookmark and Citation CRUD ---
-
-  const addBookmark = () => {
-    if (!currentCfi) return;
-    let locationIndex: number | undefined;
-    let progressPercent: number | undefined;
-    try {
-      const locations = bookRef.current?.locations;
-      if (locations?.locationFromCfi && locations?.percentageFromCfi) {
-        const loc = locations.locationFromCfi(currentCfi);
-        if (typeof loc === "number" && Number.isFinite(loc)) {
-          locationIndex = Math.max(1, Math.round(loc));
-        }
-        const pct = locations.percentageFromCfi(currentCfi);
-        if (typeof pct === "number" && Number.isFinite(pct)) {
-          progressPercent = Math.max(0, Math.min(100, Math.round(pct * 100)));
-        }
-      }
-    } catch {
-      // ignore location metadata errors
-    }
-    const bookmark: ReaderBookmark = {
-      id: createId(),
-      cfi: currentCfi,
-      label: currentChapter || currentPageLabel || "Bookmark",
-      chapter: currentChapter || undefined,
-      pageLabel: currentPageLabel || undefined,
-      locationIndex,
-      progressPercent,
-      createdAt: Date.now()
-    };
-    const next = [
-      bookmark,
-      ...bookmarks.filter(entry => entry.cfi !== currentCfi)
-    ];
-    setBookmarks(next);
-    saveBookmarks(url, next);
-    // Sync to server (fire-and-forget)
-    annotationSync.syncBookmark(
-      { cfi: currentCfi, progressPercent },
-      bookmark.id,
-      bookmark.label
-    );
-  };
-
-  const removeBookmark = (id: string) => {
-    const next = bookmarks.filter(entry => entry.id !== id);
-    setBookmarks(next);
-    saveBookmarks(url, next);
-    // Remove from server if we have a server-assigned id
-    try {
-      const raw = localStorage.getItem(`reader:serverIds:${url}`);
-      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-      if (map[id]) annotationSync.removeServerBookmark(map[id]);
-    } catch {
-      // ignore
-    }
-  };
-
-  const addCitation = () => {
-    const note = citationDraft.trim();
-    if (!currentCfi || (!note && !pendingCitationText)) return;
-    const citation: ReaderCitation = {
-      id: createId(),
-      cfi: currentCfi,
-      note,
-      quotedText: pendingCitationText ?? undefined,
-      chapter: currentChapter || undefined,
-      pageLabel: currentPageLabel || undefined,
-      createdAt: Date.now()
-    };
-    const next = [citation, ...citations];
-    setCitations(next);
-    saveCitations(url, next);
-    // Sync to server (fire-and-forget)
-    annotationSync.syncNote(
-      { cfi: currentCfi },
-      citation.id,
-      [citation.quotedText ? `"${citation.quotedText}"` : "", note]
-        .filter(Boolean)
-        .join("\n")
-    );
-    setCitationDraft("");
-    setPendingCitationText(null);
-  };
-
-  const removeCitation = (id: string) => {
-    const next = citations.filter(entry => entry.id !== id);
-    setCitations(next);
-    saveCitations(url, next);
-    // Remove from server if we have a server-assigned id
-    try {
-      const raw = localStorage.getItem(`reader:serverIds:${url}`);
-      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-      if (map[id]) annotationSync.removeServerNote(map[id]);
-    } catch {
-      // ignore
-    }
-    if (editingCitationId === id) {
-      setEditingCitationId(null);
-      setEditingCitationDraft("");
-    }
-  };
-
-  const beginCitationEdit = (citation: ReaderCitation) => {
-    setEditingCitationId(citation.id);
-    setEditingCitationDraft(citation.note);
-  };
-
-  const cancelCitationEdit = () => {
-    setEditingCitationId(null);
-    setEditingCitationDraft("");
-  };
-
-  const saveCitationEdit = () => {
-    const note = editingCitationDraft.trim();
-    if (!editingCitationId || !note) return;
-    const next = citations.map(entry =>
-      entry.id === editingCitationId
-        ? {
-            ...entry,
-            note
-          }
-        : entry
-    );
-    setCitations(next);
-    saveCitations(url, next);
-    setEditingCitationId(null);
-    setEditingCitationDraft("");
-  };
-
-  const copyCitation = async (citation: ReaderCitation) => {
-    const bookTitle = metadataTitle || title || undefined;
-    const header = [
-      citation.chapter || bookTitle,
-      citation.pageLabel ? `(${citation.pageLabel})` : undefined
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const rawIdentifier = readerInfo?.bookInfo?.identifier || undefined;
-    const workLink = formatIdentifierAsLink(rawIdentifier) ?? bookUrl ?? url;
-    const parts: string[] = [];
-    if (header) parts.push(header);
-    if (citation.quotedText) parts.push(`"${citation.quotedText}"`);
-    if (citation.note) parts.push(citation.note);
-    parts.push(workLink);
-    const payload = parts.join("\n");
-    try {
-      await navigator.clipboard.writeText(payload);
-    } catch {
-      // ignore clipboard errors
-    }
-  };
-
-  const sortedBookmarks = React.useMemo(
-    () =>
-      bookmarks
-        .slice()
-        .sort(
-          (a, b) =>
-            (a.locationIndex ?? Number.MAX_SAFE_INTEGER) -
-            (b.locationIndex ?? Number.MAX_SAFE_INTEGER)
-        ),
-    [bookmarks]
-  );
-
-  const sortedCitations = React.useMemo(
-    () => citations.slice().sort((a, b) => b.createdAt - a.createdAt),
-    [citations]
-  );
-
-  const bookmarkActive = React.useMemo(
-    () =>
-      Boolean(currentCfi && bookmarks.some(entry => entry.cfi === currentCfi)),
-    [bookmarks, currentCfi]
-  );
 
   // --- Header controls ---
 
@@ -1129,7 +864,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 gap: 2,
                 flex: 1,
                 minHeight: 0,
-                overflow: "hidden"
+                overflow: "auto"
               }}
             >
               {pendingCitationText && (
