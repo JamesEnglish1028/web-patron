@@ -127,7 +127,6 @@ export async function fetchBook(
     const book = opds2EntryToBook(json, url);
     if (book) return book;
     // Fall through to XML parse if the JSON didn't look like an OPDS 2 entry
-    const text = JSON.stringify(json);
     throw new ApplicationError({
       title: "OPDS Error",
       detail: `OPDS 2 borrow response could not be parsed into a book. Url: ${url}`

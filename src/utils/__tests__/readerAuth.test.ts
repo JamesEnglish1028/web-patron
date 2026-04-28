@@ -7,7 +7,7 @@ import { storeReaderAuth, getReaderAuth } from "../readerAuth";
 const makeMockStorage = () => {
   let store: Record<string, string> = {};
   return {
-    getItem: jest.fn((key: string) => store[key] ?? null),
+    getItem: jest.fn((key: string): string | null => store[key] ?? null),
     setItem: jest.fn((key: string, value: string) => {
       store[key] = value;
     }),
