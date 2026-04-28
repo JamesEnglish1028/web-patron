@@ -95,7 +95,11 @@ type EpubThemesApi = {
 };
 
 type EpubContentsLike = {
+  // epubjs Contents exposes the iframe document directly and via .window
+  document?: Document;
   window?: Window & typeof globalThis;
+  // addStylesheetCss(css, key) injects a <style> into the content document
+  addStylesheetCss?: (css: string, key: string) => void;
 };
 
 type EpubRenditionLike = {
@@ -107,6 +111,11 @@ type EpubRenditionLike = {
   next?: () => void;
   spread?: (mode: "auto" | "none") => void;
   destroy?: () => void;
+  hooks?: {
+    content?: {
+      register?: (fn: (contents: EpubContentsLike) => void) => void;
+    };
+  };
 };
 
 type EpubBookLike = {
@@ -376,6 +385,29 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             setProgressLabel(`Page ${displayed.page} of ${displayed.total}`);
           }
         });
+
+        // Suppress EPUB 3 print page-break markers (epub:type="pagebreak").
+        // These are aria-hidden <span>/<a> elements that mark print page
+        // boundaries; without CSS they render as visible inline links.
+        // hooks.content fires for every page render and receives the view;
+        // contents is at view.contents — addStylesheetCss() injects CSS.
+        const PAGE_BREAK_CSS =
+          `[epub\\:type~="pagebreak"],[role="doc-pagebreak"],` +
+          `span.pagebreak,a.pagebreak,span.page-break,a.page-break,` +
+          `[aria-hidden="true"][class~="page"],[aria-hidden="true"][id^="pg"]` +
+          `{display:none!important}`;
+        rendition.hooks?.content?.register?.(
+          (contents: EpubContentsLike) => {
+            try {
+              contents.addStylesheetCss?.(
+                PAGE_BREAK_CSS,
+                "__epub-hide-pagebreaks__"
+              );
+            } catch {
+              // ignore injection errors
+            }
+          }
+        );
 
         // epubjs fires "selected" with the contents object of the iframe that
         // renders the EPUB page.  We offset the in-iframe selection rect by the
