@@ -1,6 +1,9 @@
 import * as React from "react";
 import { createId } from "utils/readerAnnotations";
-import type { PdfAnnotationItem, PdfBookmarkItem } from "../components/reader/readers/PdfReader.types";
+import type {
+  PdfAnnotationItem,
+  PdfBookmarkItem
+} from "../components/reader/readers/PdfReader.types";
 
 type AnnotationSync = {
   syncBookmark: (

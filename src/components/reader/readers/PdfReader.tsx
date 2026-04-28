@@ -108,7 +108,6 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     setAnnotationDraft,
     editingAnnotationId,
     editingAnnotationDraft,
-    setEditingAnnotationId,
     setEditingAnnotationDraft,
     addBookmark: hookAddBookmark,
     removeBookmark: hookRemoveBookmark,
