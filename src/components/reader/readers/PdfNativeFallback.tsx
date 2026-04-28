@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Box, type ThemeUIStyleObject } from "theme-ui";
+import { Box } from "theme-ui";
 import Button, { AnchorButton } from "components/Button";
 import Stack from "components/Stack";
 import { Text } from "components/Text";
@@ -104,10 +104,7 @@ export const PdfNativeFallback: React.FC<PdfNativeFallbackProps> = ({
           >
             <Box>
               <Text variant="text.headers.primary">PDF Reader</Text>
-              <Text
-                variant="text.detail"
-                sx={{ color: "ui.gray.dark", mt: 1 }}
-              >
+              <Text variant="text.detail" sx={{ color: "ui.gray.dark", mt: 1 }}>
                 This title is using compatibility mode because custom canvas
                 rendering is unavailable in this browser/runtime.
               </Text>
@@ -176,9 +173,8 @@ export const PdfNativeFallback: React.FC<PdfNativeFallbackProps> = ({
             }}
           >
             <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-              Patron Web provides styled reader chrome while this
-              compatibility mode delegates rendering to the browser PDF
-              surface.
+              Patron Web provides styled reader chrome while this compatibility
+              mode delegates rendering to the browser PDF surface.
             </Text>
             <Button
               variant="ghost"

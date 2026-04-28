@@ -9,7 +9,11 @@ import { createId } from "utils/readerAnnotations";
 import type { EpubBookLike } from "../components/reader/readers/EpubReader.types";
 
 type AnnotationSync = {
-  syncBookmark: (pos: { cfi: string; progressPercent?: number }, id: string, label: string) => void;
+  syncBookmark: (
+    pos: { cfi: string; progressPercent?: number },
+    id: string,
+    label: string
+  ) => void;
   syncNote: (pos: { cfi: string }, id: string, content: string) => void;
   removeServerBookmark: (id: string) => void;
   removeServerNote: (id: string) => void;
@@ -31,9 +35,13 @@ export const useEpubAnnotations = (
   const [bookmarks, setBookmarks] = React.useState<ReaderBookmark[]>([]);
   const [citations, setCitations] = React.useState<ReaderCitation[]>([]);
   const [citationDraft, setCitationDraft] = React.useState("");
-  const [editingCitationId, setEditingCitationId] = React.useState<string | null>(null);
+  const [editingCitationId, setEditingCitationId] = React.useState<
+    string | null
+  >(null);
   const [editingCitationDraft, setEditingCitationDraft] = React.useState("");
-  const [pendingCitationText, setPendingCitationText] = React.useState<string | null>(null);
+  const [pendingCitationText, setPendingCitationText] = React.useState<
+    string | null
+  >(null);
 
   // Sync memos for sorted bookmarks and citations
   const sortedBookmarks = React.useMemo(

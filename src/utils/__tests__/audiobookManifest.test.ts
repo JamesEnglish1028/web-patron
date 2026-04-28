@@ -1,7 +1,7 @@
 import { parseAudiobookManifest } from "../audiobookManifest";
 // TextEncoder/TextDecoder are Node.js globals but may be absent in older
 // jsdom versions bundled with the project's jest setup.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+
 const { TextEncoder: NodeTextEncoder, TextDecoder: NodeTextDecoder } =
   require("util") as {
     TextEncoder: typeof TextEncoder;
@@ -10,7 +10,6 @@ const { TextEncoder: NodeTextEncoder, TextDecoder: NodeTextDecoder } =
 
 // Polyfill for the jsdom environment used by Jest.
 if (typeof global.TextDecoder === "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).TextDecoder = NodeTextDecoder;
 }
 
@@ -42,9 +41,7 @@ describe("parseAudiobookManifest — error cases", () => {
   });
 
   test("throws for invalid JSON", () => {
-    expect(() => parseAudiobookManifest("{bad json")).toThrow(
-      "not valid JSON"
-    );
+    expect(() => parseAudiobookManifest("{bad json")).toThrow("not valid JSON");
   });
 
   test("throws when readingOrder is missing", () => {
@@ -210,9 +207,7 @@ describe("parseAudiobookManifest — tracks", () => {
       JSON.stringify({ readingOrder: [{ href: "ch1.mp3", title: "T" }] }),
       BASE_URL
     );
-    expect(result.tracks[0].href).toBe(
-      "https://example.org/books/123/ch1.mp3"
-    );
+    expect(result.tracks[0].href).toBe("https://example.org/books/123/ch1.mp3");
   });
 
   test("leaves absolute hrefs unchanged when baseUrl provided", () => {
@@ -273,9 +268,7 @@ describe("parseAudiobookManifest — toc", () => {
       }),
       BASE_URL
     );
-    expect(result.toc[0].href).toBe(
-      "https://example.org/books/123/a.mp3#t=0"
-    );
+    expect(result.toc[0].href).toBe("https://example.org/books/123/a.mp3#t=0");
   });
 });
 

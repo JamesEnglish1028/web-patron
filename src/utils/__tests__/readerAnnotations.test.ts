@@ -12,7 +12,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const makeBookmark = (overrides: Partial<ReaderBookmark> = {}): ReaderBookmark => ({
+const makeBookmark = (
+  overrides: Partial<ReaderBookmark> = {}
+): ReaderBookmark => ({
   id: "bm-1",
   cfi: "epubcfi(/6/4[intro]!/4/2/1:0)",
   label: "Chapter 1",
@@ -20,7 +22,9 @@ const makeBookmark = (overrides: Partial<ReaderBookmark> = {}): ReaderBookmark =
   ...overrides
 });
 
-const makeCitation = (overrides: Partial<ReaderCitation> = {}): ReaderCitation => ({
+const makeCitation = (
+  overrides: Partial<ReaderCitation> = {}
+): ReaderCitation => ({
   id: "ct-1",
   cfi: "epubcfi(/6/4[intro]!/4/2/1:0)",
   note: "Interesting passage",
@@ -102,7 +106,10 @@ describe("loadBookmarks", () => {
 
 describe("saveBookmarks", () => {
   it("writes serialised bookmarks to localStorage", () => {
-    const bookmarks = [makeBookmark(), makeBookmark({ id: "bm-2", cfi: "epubcfi(/6/6)" })];
+    const bookmarks = [
+      makeBookmark(),
+      makeBookmark({ id: "bm-2", cfi: "epubcfi(/6/6)" })
+    ];
     saveBookmarks("book-1", bookmarks);
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       "reader:bookmarks:book-1",
@@ -195,7 +202,10 @@ describe("saveCitations", () => {
   });
 
   it("round-trips through save then load", () => {
-    const citations = [makeCitation(), makeCitation({ id: "ct-2", note: "Another" })];
+    const citations = [
+      makeCitation(),
+      makeCitation({ id: "ct-2", note: "Another" })
+    ];
     saveCitations("book-1", citations);
     const raw = localStorageMock.setItem.mock.calls[0][1] as string;
     localStorageMock.getItem.mockReturnValueOnce(raw);

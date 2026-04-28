@@ -23,7 +23,9 @@ const makeBook = (items: ReturnType<typeof makeSpineItem>[]) => ({
 
 describe("performBookSearch", () => {
   it("returns empty array for an empty query", async () => {
-    const book = makeBook([makeSpineItem([{ cfi: "epubcfi(/1)", excerpt: "hello" }])]);
+    const book = makeBook([
+      makeSpineItem([{ cfi: "epubcfi(/1)", excerpt: "hello" }])
+    ]);
     expect(await performBookSearch(book, "")).toEqual([]);
     expect(await performBookSearch(book, "   ")).toEqual([]);
   });

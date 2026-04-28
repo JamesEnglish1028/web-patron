@@ -532,7 +532,7 @@ export function useAnnotationSync({
         return;
       postLastPosition(position);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [postLastPosition]
   );
 

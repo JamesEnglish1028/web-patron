@@ -73,7 +73,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const [searchActive, setSearchActive] = React.useState(false);
   const [displayActive, setDisplayActive] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<PdfSearchResult[]>([]);
+  const [searchResults, setSearchResults] = React.useState<PdfSearchResult[]>(
+    []
+  );
   const [isSearching, setIsSearching] = React.useState(false);
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
   const [primaryTextData, setPrimaryTextData] =
@@ -85,11 +87,19 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     x: number;
     y: number;
   } | null>(null);
-  const [pendingCitationText, setPendingCitationText] = React.useState<string | null>(null);
+  const [pendingCitationText, setPendingCitationText] = React.useState<
+    string | null
+  >(null);
 
   // Extracted hooks for PDF document and annotations
-  const { pdfRef, pdfUrl, numPages, tocItems, useNativeFallback, error: pdfError } =
-    usePdfDocument(url, authToken, setLoading);
+  const {
+    pdfRef,
+    pdfUrl,
+    numPages,
+    tocItems,
+    useNativeFallback,
+    error: pdfError
+  } = usePdfDocument(url, authToken, setLoading);
 
   const {
     bookmarks,
@@ -98,8 +108,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     setAnnotationDraft,
     editingAnnotationId,
     editingAnnotationDraft,
-      _setEditingAnnotationId,
-      setEditingAnnotationDraft,
+    _setEditingAnnotationId,
+    setEditingAnnotationDraft,
     addBookmark: hookAddBookmark,
     removeBookmark: hookRemoveBookmark,
     addAnnotation: hookAddAnnotation,
@@ -108,7 +118,14 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     cancelAnnotationEdit: hookCancelAnnotationEdit,
     saveAnnotationEdit: hookSaveAnnotationEdit,
     copyAnnotation: hookCopyAnnotation
-  } = usePdfAnnotations(url, pageNumber, numPages, title, bookUrl, annotationSync);
+  } = usePdfAnnotations(
+    url,
+    pageNumber,
+    numPages,
+    title,
+    bookUrl,
+    annotationSync
+  );
 
   const readerInfo = useReaderInfo();
 
@@ -217,7 +234,14 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       const pdf = pdfRef.current;
       const primaryCanvas = primaryCanvasRef.current;
       const secondaryCanvas = secondaryCanvasRef.current;
-        if (!pdf || !primaryCanvas || !numPages || useNativeFallback || !useCustomPdfRender) return;
+      if (
+        !pdf ||
+        !primaryCanvas ||
+        !numPages ||
+        useNativeFallback ||
+        !useCustomPdfRender
+      )
+        return;
 
       setPrimaryTextData(null);
       setSecondaryTextData(null);
@@ -337,8 +361,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     containerWidth,
     pageView,
     useNativeFallback,
-      useCustomPdfRender,
-      pdfRef,
+    useCustomPdfRender,
+    pdfRef,
     setLoading
   ]);
 
@@ -464,7 +488,11 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       <PdfNativeFallback
         title={title || ""}
         pdfUrl={pdfUrl}
-        nativeViewerSrc={pdfUrl ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH` : ""}
+        nativeViewerSrc={
+          pdfUrl
+            ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH`
+            : ""
+        }
         tocActive={tocActive}
         searchActive={searchActive}
         displayActive={displayActive}

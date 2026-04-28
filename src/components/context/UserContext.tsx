@@ -207,7 +207,10 @@ export const UserProvider = ({ children }: UserProviderProps) => {
     // if the id exists, remove that book and set the new one
     const withoutOldBook = existing.filter(book => book.id !== id);
     const newBooks: AnyBook[] = [...withoutOldBook, book];
-    mutate({ books: newBooks, annotationServiceUrl: data?.annotationServiceUrl });
+    mutate({
+      books: newBooks,
+      annotationServiceUrl: data?.annotationServiceUrl
+    });
   }
 
   // Clear auth failure context when credentials change or on successful auth
@@ -235,7 +238,9 @@ export const UserProvider = ({ children }: UserProviderProps) => {
     isAuthenticated,
     isLoading,
     loans: isAuthenticated ? (data?.books ?? []) : undefined,
-    annotationServiceUrl: isAuthenticated ? data?.annotationServiceUrl : undefined,
+    annotationServiceUrl: isAuthenticated
+      ? data?.annotationServiceUrl
+      : undefined,
     patronId,
     refetchLoans: mutate,
     signIn,
@@ -285,9 +290,8 @@ async function fetchLoans([url, token]: readonly [
 ]): Promise<{ books: AnyBook[]; annotationServiceUrl: string | undefined }> {
   const collection = await fetchCollection(url, token);
   const annotationServiceUrl =
-    collection.links
-      ?.find(link => link.type === ANNOTATION_SERVICE_REL)
-      ?.url ?? undefined;
+    collection.links?.find(link => link.type === ANNOTATION_SERVICE_REL)?.url ??
+    undefined;
   return { books: collection.books, annotationServiceUrl };
 }
 

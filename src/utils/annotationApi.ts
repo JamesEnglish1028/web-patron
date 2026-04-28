@@ -95,8 +95,7 @@ function buildHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type":
       'application/ld+json; profile="http://www.w3.org/ns/anno.jsonld"',
-    Accept:
-      'application/ld+json; profile="http://www.w3.org/ns/anno.jsonld"'
+    Accept: 'application/ld+json; profile="http://www.w3.org/ns/anno.jsonld"'
   };
   if (token) {
     headers["Authorization"] = token;

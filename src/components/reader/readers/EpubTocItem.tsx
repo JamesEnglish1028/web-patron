@@ -1,11 +1,19 @@
 import * as React from "react";
-import { Box, type ThemeUIStyleObject } from "theme-ui";
+import { Box } from "theme-ui";
 import type { EpubTocItem as EpubTocItemType } from "./EpubReader.types";
 
 /**
  * Helper to compare EPUB TOC href paths for active state detection.
  */
-const tocHrefMatches = (a: string, b: string, helpers?: { cleanPath: (p: string) => string; splitHref: (h: string) => { path: string }; safeDecode: (s: string) => string }): boolean => {
+const tocHrefMatches = (
+  a: string,
+  b: string,
+  helpers?: {
+    cleanPath: (p: string) => string;
+    splitHref: (h: string) => { path: string };
+    safeDecode: (s: string) => string;
+  }
+): boolean => {
   if (!helpers) {
     // Fallback simple comparison when utilities aren't provided
     return a === b;

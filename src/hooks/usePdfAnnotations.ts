@@ -3,8 +3,15 @@ import { createId } from "utils/readerAnnotations";
 import type { PdfAnnotationItem, PdfBookmarkItem } from "./PdfReader.types";
 
 type AnnotationSync = {
-  syncBookmark: (pos: { pageNumber: number; numPages: number }, id: string) => void;
-  syncNote: (pos: { pageNumber: number; numPages: number }, id: string, content: string) => void;
+  syncBookmark: (
+    pos: { pageNumber: number; numPages: number },
+    id: string
+  ) => void;
+  syncNote: (
+    pos: { pageNumber: number; numPages: number },
+    id: string,
+    content: string
+  ) => void;
   removeServerBookmark: (id: string) => void;
   removeServerNote: (id: string) => void;
 };
@@ -23,14 +30,19 @@ export const usePdfAnnotations = (
   const [bookmarks, setBookmarks] = React.useState<PdfBookmarkItem[]>([]);
   const [annotations, setAnnotations] = React.useState<PdfAnnotationItem[]>([]);
   const [annotationDraft, setAnnotationDraft] = React.useState("");
-  const [editingAnnotationId, setEditingAnnotationId] = React.useState<string | null>(null);
-  const [editingAnnotationDraft, setEditingAnnotationDraft] = React.useState("");
+  const [editingAnnotationId, setEditingAnnotationId] = React.useState<
+    string | null
+  >(null);
+  const [editingAnnotationDraft, setEditingAnnotationDraft] =
+    React.useState("");
 
   // Load bookmarks and annotations from localStorage on URL change
   React.useEffect(() => {
     try {
       const rawBookmarks = localStorage.getItem(`reader:pdf:bookmarks:${url}`);
-      const rawAnnotations = localStorage.getItem(`reader:pdf:annotations:${url}`);
+      const rawAnnotations = localStorage.getItem(
+        `reader:pdf:annotations:${url}`
+      );
       setBookmarks(rawBookmarks ? JSON.parse(rawBookmarks) : []);
       setAnnotations(rawAnnotations ? JSON.parse(rawAnnotations) : []);
     } catch {
@@ -45,7 +57,10 @@ export const usePdfAnnotations = (
   // Persist bookmarks to localStorage
   React.useEffect(() => {
     try {
-      localStorage.setItem(`reader:pdf:bookmarks:${url}`, JSON.stringify(bookmarks));
+      localStorage.setItem(
+        `reader:pdf:bookmarks:${url}`,
+        JSON.stringify(bookmarks)
+      );
     } catch {
       // ignore storage errors
     }
@@ -54,7 +69,10 @@ export const usePdfAnnotations = (
   // Persist annotations to localStorage
   React.useEffect(() => {
     try {
-      localStorage.setItem(`reader:pdf:annotations:${url}`, JSON.stringify(annotations));
+      localStorage.setItem(
+        `reader:pdf:annotations:${url}`,
+        JSON.stringify(annotations)
+      );
     } catch {
       // ignore storage errors
     }

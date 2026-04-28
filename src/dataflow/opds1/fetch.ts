@@ -158,9 +158,13 @@ function getMediaSupportLevel(
   contentType: string,
   indirectionType?: string
 ): MediaSupportLevel {
-  const defaultLevel: MediaSupportLevel = _mediaSupport?.default ?? "unsupported";
+  const defaultLevel: MediaSupportLevel =
+    _mediaSupport?.default ?? "unsupported";
   if (indirectionType) {
-    return (_mediaSupport[indirectionType]?.[contentType] as MediaSupportLevel) ?? defaultLevel;
+    return (
+      (_mediaSupport[indirectionType]?.[contentType] as MediaSupportLevel) ??
+      defaultLevel
+    );
   }
   return (_mediaSupport[contentType] as MediaSupportLevel) ?? defaultLevel;
 }
@@ -170,7 +174,10 @@ function getMediaSupportLevel(
  * endpoint into a FulfillableBook. Returns null if the response does not look
  * like an OPDS 2 entry.
  */
-function opds2EntryToBook(json: Record<string, unknown>, feedUrl: string): FulfillableBook | null {
+function opds2EntryToBook(
+  json: Record<string, unknown>,
+  feedUrl: string
+): FulfillableBook | null {
   const metadata = json.metadata as Record<string, unknown> | undefined;
   const links = json.links as Array<Record<string, unknown>> | undefined;
   const images = json.images as Array<Record<string, unknown>> | undefined;
@@ -204,9 +211,9 @@ function opds2EntryToBook(json: Record<string, unknown>, feedUrl: string): Fulfi
     (links.find(l => l.rel === "http://librarysimplified.org/terms/rel/revoke")
       ?.href as string | null) ?? null;
 
-  const availabilityRaw = links
-    .find(l => l.rel === "http://opds-spec.org/acquisition")
-    ?.properties as Record<string, unknown> | undefined;
+  const availabilityRaw = links.find(
+    l => l.rel === "http://opds-spec.org/acquisition"
+  )?.properties as Record<string, unknown> | undefined;
   const availability = availabilityRaw?.availability as
     | { state?: string; since?: string; until?: string }
     | undefined;
@@ -274,8 +281,7 @@ function opds2EntryToBook(json: Record<string, unknown>, feedUrl: string): Fulfi
     fulfillmentLinks,
     availability: availability
       ? {
-          status:
-            availability.state === "ready" ? "available" : "unavailable",
+          status: availability.state === "ready" ? "available" : "unavailable",
           since: availability.since,
           until: availability.until
         }

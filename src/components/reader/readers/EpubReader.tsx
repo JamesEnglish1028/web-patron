@@ -25,7 +25,7 @@ import {
   loadBookmarks,
   saveBookmarks,
   loadCitations,
-  saveCitations,
+  saveCitations
 } from "utils/readerAnnotations";
 import { useAnnotationSync } from "hooks/useAnnotationSync";
 import { useEpubAnnotations } from "hooks/useEpubAnnotations";
@@ -88,9 +88,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
   // Annotation management via hook
   const {
-    bookmarks,
     setBookmarks,
-    citations,
     setCitations,
     citationDraft,
     setCitationDraft,
@@ -111,7 +109,16 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     cancelCitationEdit,
     saveCitationEdit,
     copyCitation
-  } = useEpubAnnotations(url, currentCfi, currentChapter, currentPageLabel, bookRef, metadataTitle, title, annotationSync);
+  } = useEpubAnnotations(
+    url,
+    currentCfi,
+    currentChapter,
+    currentPageLabel,
+    bookRef,
+    metadataTitle,
+    title,
+    annotationSync
+  );
   const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>(
     []
   );
@@ -308,18 +315,16 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           `span.pagebreak,a.pagebreak,span.page-break,a.page-break,` +
           `[aria-hidden="true"][class~="page"],[aria-hidden="true"][id^="pg"]` +
           `{display:none!important}`;
-        rendition.hooks?.content?.register?.(
-          (contents: EpubContentsLike) => {
-            try {
-              contents.addStylesheetCss?.(
-                PAGE_BREAK_CSS,
-                "__epub-hide-pagebreaks__"
-              );
-            } catch {
-              // ignore injection errors
-            }
+        rendition.hooks?.content?.register?.((contents: EpubContentsLike) => {
+          try {
+            contents.addStylesheetCss?.(
+              PAGE_BREAK_CSS,
+              "__epub-hide-pagebreaks__"
+            );
+          } catch {
+            // ignore injection errors
           }
-        );
+        });
 
         // epubjs fires "selected" with the contents object of the iframe that
         // renders the EPUB page.  We offset the in-iframe selection rect by the
@@ -605,7 +610,6 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setShowToc(false);
     setShowSearch(false);
   };
-
 
   // --- Header controls ---
 
@@ -1374,7 +1378,9 @@ export default EpubReader;
 // Returns the identifier only if it is a usable HTTP(S) URI.
 // URNs, UUIDs, and plain numbers are not meaningful citation links
 // and return undefined so callers fall back to bookUrl or the fulfillment URL.
-const formatIdentifierAsLink = (id: string | undefined): string | undefined => {
+const _formatIdentifierAsLink = (
+  id: string | undefined
+): string | undefined => {
   if (!id) return undefined;
   const s = id.trim();
   if (s.startsWith("https://") || s.startsWith("http://")) return s;

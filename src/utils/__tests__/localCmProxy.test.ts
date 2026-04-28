@@ -9,7 +9,9 @@ describe("toBrowserFetchUrl", () => {
     const url = "http://localhost:6500/api/book/1.epub";
     const result = toBrowserFetchUrl(url);
     expect(result).toMatch(/^\/api\/cm\?url=/);
-    expect(result).toContain(encodeURIComponent("http://localhost:6500/api/book/1.epub"));
+    expect(result).toContain(
+      encodeURIComponent("http://localhost:6500/api/book/1.epub")
+    );
   });
 
   test("rewrites 127.0.0.1:6500 to /api/cm proxy path", () => {
