@@ -5,6 +5,8 @@ import Stack from "components/Stack";
 import { Text } from "components/Text";
 import Info from "icons/Info";
 import Trash from "icons/Trash";
+import Copy from "icons/Copy";
+import Pencil from "icons/Pencil";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
@@ -1404,28 +1406,34 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                                 <Button
                                   variant="ghost"
                                   color="text"
+                                  iconLeft={Pencil}
+                                  aria-label="Edit"
+                                  title="Edit"
                                   onClick={() =>
                                     beginAnnotationEdit(annotation)
                                   }
-                                >
-                                  Edit
-                                </Button>
+                                  sx={iconOnlyControlButtonSx}
+                                />
                                 <Button
                                   variant="ghost"
                                   color="text"
+                                  iconLeft={Copy}
+                                  aria-label="Copy"
+                                  title="Copy"
                                   onClick={() => copyAnnotation(annotation)}
-                                >
-                                  Copy
-                                </Button>
+                                  sx={iconOnlyControlButtonSx}
+                                />
                                 <Button
                                   variant="ghost"
                                   color="text"
+                                  iconLeft={Trash}
+                                  aria-label="Delete"
+                                  title="Delete"
                                   onClick={() =>
                                     removeAnnotation(annotation.id)
                                   }
-                                >
-                                  Remove
-                                </Button>
+                                  sx={iconOnlyControlButtonSx}
+                                />
                               </Box>
                             </Box>
                             {editingAnnotationId === annotation.id ? (
@@ -1677,12 +1685,6 @@ const PdfReader: React.FC<PdfReaderProps> = ({
               </Box>
             </Box>
           )}
-
-          <Box sx={{ mt: 3, flexShrink: 0 }}>
-            <Button variant="ghost" color="text" onClick={closePanels}>
-              Close
-            </Button>
-          </Box>
         </Box>
       )}
 

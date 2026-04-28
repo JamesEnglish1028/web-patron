@@ -13,6 +13,7 @@ import ChevronRight from "icons/ChevronRight";
 import Info from "icons/Info";
 import Trash from "icons/Trash";
 import Copy from "icons/Copy";
+import Pencil from "icons/Pencil";
 import Stack from "components/Stack";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
@@ -1228,18 +1229,30 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                           <Button
                             variant="ghost"
                             color="text"
+                            iconLeft={Pencil}
+                            aria-label="Edit"
+                            title="Edit"
                             onClick={() => beginCitationEdit(citation)}
-                          >
-                            Edit
-                          </Button>
+                            sx={iconOnlyControlButtonSx}
+                          />
+                          <Button
+                            variant="ghost"
+                            color="text"
+                            iconLeft={Copy}
+                            aria-label="Copy"
+                            title="Copy"
+                            onClick={() => copyCitation(citation)}
+                            sx={iconOnlyControlButtonSx}
+                          />
                           <Button
                             variant="ghost"
                             color="text"
                             iconLeft={Trash}
+                            aria-label="Delete"
+                            title="Delete"
                             onClick={() => removeCitation(citation.id)}
-                          >
-                            Remove
-                          </Button>
+                            sx={iconOnlyControlButtonSx}
+                          />
                         </Box>
                       </Box>
                       {editingCitationId === citation.id ? (
@@ -1320,14 +1333,6 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                               {citation.pageLabel}
                             </Text>
                           )}
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Copy}
-                            onClick={() => copyCitation(citation)}
-                          >
-                            Copy
-                          </Button>
                         </>
                       )}
                     </Box>
