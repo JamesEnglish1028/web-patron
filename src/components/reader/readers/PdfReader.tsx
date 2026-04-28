@@ -12,6 +12,7 @@ import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 // createId is the same ID generator used by EpubReader for bookmarks/citations.
 import { createId } from "utils/readerAnnotations";
+import { useAnnotationSync } from "hooks/useAnnotationSync";
 
 type PdfJsModule = {
   GlobalWorkerOptions: { workerSrc: string };
@@ -127,6 +128,12 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   bookIdentifier,
   setLoading
 }) => {
+  const bookId = bookIdentifier ?? bookUrl ?? url;
+  const annotationSync = useAnnotationSync({
+    bookKey: url,
+    bookId,
+    mediaType: "pdf"
+  });
   const objectUrlRef = React.useRef<string | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const primaryCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -318,6 +325,10 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       );
       setBookmarks(rawBookmarks ? JSON.parse(rawBookmarks) : []);
       setAnnotations(rawAnnotations ? JSON.parse(rawAnnotations) : []);
+      // Restore last-visited page (falls back to 1 when absent or invalid).
+      const savedPage = localStorage.getItem(`reader:pdf:lastPage:${url}`);
+      const parsed = savedPage ? parseInt(savedPage, 10) : NaN;
+      if (!isNaN(parsed) && parsed > 1) setPageNumber(parsed);
     } catch {
       setBookmarks([]);
       setAnnotations([]);
@@ -351,6 +362,40 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       // ignore storage errors
     }
   }, [annotations, url]);
+
+  // Persist last page number to localStorage and sync to the annotation
+  // service so the patron can resume from the same position on another device.
+  React.useEffect(() => {
+    if (!pageNumber || pageNumber <= 1) return;
+    try {
+      localStorage.setItem(`reader:pdf:lastPage:${url}`, String(pageNumber));
+    } catch {
+      // ignore
+    }
+    annotationSync.syncLastPosition({ pageNumber, numPages });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageNumber, url]);
+
+  // Flush last page to the server when the tab becomes hidden or the page
+  // unloads, so the patron's position is never lost on an abrupt close.
+  React.useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (pageNumber > 1)
+        annotationSync.flushLastPosition({ pageNumber, numPages });
+    };
+    const onPageHide = () => {
+      if (pageNumber > 1)
+        annotationSync.flushLastPosition({ pageNumber, numPages });
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageNumber, numPages]);
 
   // Phase 2 — Initialise: Dynamically import pdfjs (keeps the large worker
   // out of the main bundle), parse the document, and resolve the PDF outline
@@ -624,12 +669,24 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const addBookmark = () => {
     if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
-    setBookmarks(prev => [
-      ...prev,
-      { id: createId(), pageNumber, createdAt: Date.now() }
-    ]);
+    const newBookmark = { id: createId(), pageNumber, createdAt: Date.now() };
+    setBookmarks(prev => [...prev, newBookmark]);
     setTocActive(true);
     setTocTab("bookmarks");
+    // Sync to server (fire-and-forget)
+    annotationSync.syncBookmark({ pageNumber, numPages }, newBookmark.id);
+  };
+
+  const removeBookmark = (id: string) => {
+    setBookmarks(prev => prev.filter(entry => entry.id !== id));
+    // Remove from server if we have a server-assigned id
+    try {
+      const raw = localStorage.getItem(`reader:serverIds:${url}`);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      if (map[id]) annotationSync.removeServerBookmark(map[id]);
+    } catch {
+      // ignore
+    }
   };
 
   const beginAnnotationEdit = (annotation: PdfAnnotationItem) => {
@@ -665,6 +722,14 @@ const PdfReader: React.FC<PdfReaderProps> = ({
       setEditingAnnotationId(null);
       setEditingAnnotationDraft("");
     }
+    // Remove from server if we have a server-assigned id
+    try {
+      const raw = localStorage.getItem(`reader:serverIds:${url}`);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      if (map[id]) annotationSync.removeServerNote(map[id]);
+    } catch {
+      // ignore
+    }
   };
 
   // Extracted from the JSX save button so the handler has a clear name and
@@ -672,18 +737,24 @@ const PdfReader: React.FC<PdfReaderProps> = ({
   const addAnnotation = () => {
     const note = annotationDraft.trim();
     if (!note && !pendingCitationText) return;
-    setAnnotations(prev => [
-      ...prev,
-      {
-        id: createId(),
-        pageNumber,
-        note,
-        quotedText: pendingCitationText ?? undefined,
-        createdAt: Date.now()
-      }
-    ]);
+    const newAnnotation = {
+      id: createId(),
+      pageNumber,
+      note,
+      quotedText: pendingCitationText ?? undefined,
+      createdAt: Date.now()
+    };
+    setAnnotations(prev => [...prev, newAnnotation]);
     setAnnotationDraft("");
     setPendingCitationText(null);
+    // Sync to server (fire-and-forget)
+    annotationSync.syncNote(
+      { pageNumber, numPages },
+      newAnnotation.id,
+      [newAnnotation.quotedText ? `"${newAnnotation.quotedText}"` : "", note]
+        .filter(Boolean)
+        .join("\n")
+    );
   };
 
   const copyAnnotation = async (annotation: PdfAnnotationItem) => {
@@ -993,6 +1064,50 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         }
       />
 
+      {annotationSync.serverResumeLabel && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            px: 3,
+            py: 2,
+            bg: "ui.gray.light",
+            borderBottom: "1px solid",
+            borderColor: "ui.gray.medium"
+          }}
+        >
+          <Text variant="text.detail">
+            Continue from {annotationSync.serverResumeLabel}?
+          </Text>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <Button
+              variant="filled"
+              color="brand.primary"
+              onClick={() => {
+                const pos = annotationSync.serverLastPosition as
+                  | { pageNumber: number }
+                  | null
+                  | undefined;
+                if (pos?.pageNumber) setPageNumber(pos.pageNumber);
+                annotationSync.dismissServerResume();
+              }}
+            >
+              Jump there
+            </Button>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={annotationSync.dismissServerResume}
+            >
+              Stay here
+            </Button>
+          </Box>
+        </Box>
+      )}
+
       {(tocActive || searchActive || displayActive) && (
         <Box
           sx={{
@@ -1148,11 +1263,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                               variant="ghost"
                               color="text"
                               iconLeft={Trash}
-                              onClick={() =>
-                                setBookmarks(prev =>
-                                  prev.filter(entry => entry.id !== bookmark.id)
-                                )
-                              }
+                              onClick={() => removeBookmark(bookmark.id)}
                             >
                               Remove
                             </Button>
