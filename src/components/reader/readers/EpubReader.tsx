@@ -668,6 +668,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     const spineItems = bookRef.current?.spine?.spineItems || [];
     const candidates = buildDisplayCandidates(target, spineItems);
 
+    // Also try CFI navigation via epubs's spine if available — some EPUBs only
+    // navigate correctly by CFI, not by href, especially for sub-section anchors.
+    const { hash } = splitHref(safeDecode(target));
+    if (hash) {
+      // Try the bare anchor id as a CFI-fragment fallback (epubjs resolves
+      // element ids to CFI internally when passed as plain strings starting with #)
+      candidates.push(hash);
+    }
+
     for (const candidate of candidates) {
       try {
         await rendition.display(candidate);
@@ -679,10 +688,11 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       }
     }
 
-    // Do not throw to the browser console; surface a user-facing error instead.
-    setError(
-      "Unable to navigate to this section. The EPUB TOC link may be malformed."
-    );
+    // Navigation failed for all candidates — close the TOC anyway so the
+    // user isn't stuck, and do not surface an error for sub-section anchors
+    // since many EPUBs emit them even when they aren't navigable positions.
+    setShowToc(false);
+    setShowSearch(false);
   };
 
   // --- Bookmark and Citation CRUD ---
@@ -1679,12 +1689,6 @@ const splitHref = (value: string) => {
   return { path: value.slice(0, idx), hash: value.slice(idx) };
 };
 
-const pushCandidate = (set: Set<string>, value?: string) => {
-  if (!value) return;
-  const trimmed = value.trim();
-  if (trimmed) set.add(trimmed);
-};
-
 // buildDisplayCandidates generates a prioritised list of targets to pass to
 // rendition.display().  epubjs accepts CFIs, bare filenames, relative paths,
 // and full hrefs — we generate all variants so TOC links that use different
@@ -1693,33 +1697,66 @@ const buildDisplayCandidates = (
   target: string,
   spineItems: EpubSpineItem[] = []
 ) => {
-  const set = new Set<string>();
+  // We collect two ordered lists: hash-bearing variants (which preserve the
+  // anchor so epubjs scrolls to the right element) and path-only fallbacks.
+  // Hash-bearing candidates must be tried first — if a path-only variant
+  // succeeds first, epubjs sees target === section.href and silently drops the
+  // anchor, leaving the reader at the top of the section instead of the
+  // subsection heading.
+  const withHash: string[] = [];
+  const noHash: string[] = [];
+
+  const seen = new Set<string>();
+  const pushWith = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      withHash.push(trimmed);
+    }
+  };
+  const pushNo = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      noHash.push(trimmed);
+    }
+  };
+
   const raw = target.trim();
   const decoded = safeDecode(raw);
 
   [raw, decoded].forEach(source => {
-    pushCandidate(set, source);
     const { path, hash } = splitHref(source);
     if (!path) return;
 
     const cleaned = cleanPath(path);
     const basename = cleaned.split("/").pop() || "";
 
-    pushCandidate(set, path);
-    pushCandidate(set, cleaned);
-    pushCandidate(set, `${cleaned}${hash}`);
-    pushCandidate(set, basename);
-    pushCandidate(set, `${basename}${hash}`);
+    // Prefer hash-bearing forms first so the anchor is preserved.
+    if (hash) {
+      pushWith(source);
+      pushWith(`${cleaned}${hash}`);
+      pushWith(`${basename}${hash}`);
+    }
+
+    // Path-only fallbacks (navigate to section start, no anchor).
+    pushNo(source.split("#")[0]);
+    pushNo(cleaned);
+    pushNo(basename);
 
     try {
       const parsed = new URL(source);
       const parsedPath = cleanPath(parsed.pathname);
       const parsedHash = parsed.hash || hash;
       const parsedBase = parsedPath.split("/").pop() || "";
-      pushCandidate(set, parsedPath);
-      pushCandidate(set, `${parsedPath}${parsedHash}`);
-      pushCandidate(set, parsedBase);
-      pushCandidate(set, `${parsedBase}${parsedHash}`);
+      if (parsedHash) {
+        pushWith(`${parsedPath}${parsedHash}`);
+        pushWith(`${parsedBase}${parsedHash}`);
+      }
+      pushNo(parsedPath);
+      pushNo(parsedBase);
     } catch {
       // not an absolute URL
     }
@@ -1735,15 +1772,17 @@ const buildDisplayCandidates = (
         spineBase === basename ||
         cleaned.endsWith(spineClean)
       ) {
-        pushCandidate(set, spineHref);
-        pushCandidate(set, spineClean);
-        pushCandidate(set, `${spineHref}${hash}`);
-        pushCandidate(set, `${spineClean}${hash}`);
+        if (hash) {
+          pushWith(`${spineHref}${hash}`);
+          pushWith(`${spineClean}${hash}`);
+        }
+        pushNo(spineHref);
+        pushNo(spineClean);
       }
     }
   });
 
-  return Array.from(set);
+  return [...withHash, ...noHash];
 };
 
 const resolveTocItemPosition = (
@@ -1851,11 +1890,24 @@ const TocItem: React.FC<{
   depth: number;
   onSelect: (href: string) => void;
   activeHref?: string;
-}> = ({ item, depth, onSelect, activeHref }) => {
+  parentHref?: string;
+}> = ({ item, depth, onSelect, activeHref, parentHref }) => {
   const [expanded, setExpanded] = React.useState(depth < 1);
   const label = item?.label || item?.title || "Untitled";
   const href = typeof item?.href === "string" ? item.href : "";
-  const subitems = Array.isArray(item?.subitems) ? item.subitems : [];
+  const rawSubitems = Array.isArray(item?.subitems) ? item.subitems : [];
+  // Deduplicate: skip child items whose href is identical to the parent's href
+  // — some EPUBs repeat the section link as the first child, causing a visual
+  // duplicate when the parent is expanded.
+  const subitems = parentHref
+    ? rawSubitems.filter(
+        child =>
+          !(
+            typeof child?.href === "string" &&
+            tocHrefMatches(child.href, parentHref)
+          )
+      )
+    : rawSubitems;
   const hasChildren = subitems.length > 0;
   const pageNumber =
     typeof item?.pageNumber === "number" && Number.isFinite(item.pageNumber)
@@ -1871,78 +1923,99 @@ const TocItem: React.FC<{
   const isHeading = !href && hasChildren;
   const itemFontWeight = isHeading ? 700 : depth > 0 ? 400 : 600;
 
+  // Row: expand chevron + label are sibling elements (never nested buttons).
+  // Having a <button> inside a <button> is invalid HTML — the browser promotes
+  // the inner one, which broke expand and navigation for nested TOC items.
   return (
     <Box>
       <Box
-        as={href ? "button" : "div"}
-        onClick={href ? () => onSelect(href) : undefined}
         sx={{
-          appearance: "none",
-          borderRadius: 8,
-          border: "1px solid",
-          borderColor: isActive
-            ? "var(--reader-chrome-text, #0f172a)"
-            : "transparent",
-          background: "transparent",
-          cursor: href ? "pointer" : "default",
-          justifyContent: "space-between",
           display: "flex",
           alignItems: "flex-start",
-          gap: 2,
-          width: "100%",
-          textAlign: "left",
           pl: 2 + depth * 3,
-          pr: 2,
-          py: 2,
-          whiteSpace: "normal",
-          minHeight: "unset",
-          "&:focus,&:hover": {
-            background: href ? "rgba(148, 163, 184, 0.14)" : "transparent",
-            textDecoration: "none"
-          },
-          "&:active": {
-            background: href ? "rgba(148, 163, 184, 0.22)" : "transparent"
-          }
+          pr: 2
         }}
       >
+        {/* Expand / collapse chevron — only shown when there are children */}
         {hasChildren ? (
-          <Button
-            variant="ghost"
-            color="text"
-            onClick={event => {
-              event.stopPropagation();
-              setExpanded(prev => !prev);
+          <Box
+            as="button"
+            onClick={() => setExpanded(prev => !prev)}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            sx={{
+              appearance: "none",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              px: 1,
+              py: 2,
+              lineHeight: 1,
+              flexShrink: 0,
+              color: "var(--reader-chrome-text, inherit)",
+              "&:focus,&:hover": { opacity: 0.7 }
             }}
-            sx={{ px: 1, py: 0, minHeight: "unset", lineHeight: 1 }}
           >
             {expanded ? "▾" : "▸"}
-          </Button>
+          </Box>
         ) : (
-          <Box as="span" sx={{ width: 16 }} />
+          <Box as="span" sx={{ width: 20, flexShrink: 0 }} />
         )}
+
+        {/* Navigation label — its own button, never a parent of another button */}
         <Box
-          as="span"
+          as={href ? "button" : "div"}
+          onClick={href ? () => onSelect(href) : undefined}
           sx={{
+            appearance: "none",
             flex: 1,
             minWidth: 0,
-            overflowWrap: "anywhere",
-            lineHeight: 1.25,
-            fontWeight: itemFontWeight
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 2,
+            background: "transparent",
+            borderRadius: 8,
+            border: "1px solid",
+            borderColor: isActive
+              ? "var(--reader-chrome-text, #0f172a)"
+              : "transparent",
+            cursor: href ? "pointer" : "default",
+            textAlign: "left",
+            py: 2,
+            pr: 1,
+            color: "var(--reader-chrome-text, inherit)",
+            "&:focus,&:hover": {
+              background: href ? "rgba(148, 163, 184, 0.14)" : "transparent",
+              textDecoration: "none"
+            },
+            "&:active": {
+              background: href ? "rgba(148, 163, 184, 0.22)" : "transparent"
+            }
           }}
         >
-          {label}
+          <Box
+            as="span"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              lineHeight: 1.25,
+              fontWeight: itemFontWeight
+            }}
+          >
+            {label}
+          </Box>
+          {pageNumber ? (
+            <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.8 }}>
+              p. {pageNumber}
+            </Box>
+          ) : locationIndex ? (
+            <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.7 }}>
+              loc. {locationIndex}
+            </Box>
+          ) : (
+            <span />
+          )}
         </Box>
-        {pageNumber ? (
-          <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.8 }}>
-            p. {pageNumber}
-          </Box>
-        ) : locationIndex ? (
-          <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.7 }}>
-            loc. {locationIndex}
-          </Box>
-        ) : (
-          <span />
-        )}
       </Box>
 
       {hasChildren && expanded && (
@@ -1958,6 +2031,7 @@ const TocItem: React.FC<{
               depth={depth + 1}
               onSelect={onSelect}
               activeHref={activeHref}
+              parentHref={href || parentHref}
             />
           ))}
         </Box>
