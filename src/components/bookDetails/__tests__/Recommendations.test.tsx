@@ -71,8 +71,8 @@ test("doesn't show recommendations if there are none", () => {
   expect(utils.container).toBeEmptyDOMElement();
 });
 
-test("doesn't show recommendations if the lanes don't have > 1 book", () => {
-  const emptyLanes: CollectionData = {
+test("shows recommendations when a lane has a single non-current book", () => {
+  const singleBookLanes: CollectionData = {
     id: "related-id",
     title: "related title",
     url: "data-related-url",
@@ -94,7 +94,40 @@ test("doesn't show recommendations if the lanes don't have > 1 book", () => {
   };
   mockSwr({
     isValidating: false,
-    data: emptyLanes
+    data: singleBookLanes
+  });
+  const utils = render(<Recommendations book={fixtures.borrowableBook} />);
+  expect(
+    utils.getByRole("heading", { name: "Recommendations" })
+  ).toBeInTheDocument();
+  expect(utils.getByRole("heading", { name: "lane 1 collection" }));
+  expect(utils.getByRole("heading", { name: "lane 2 collection" }));
+});
+
+test("doesn't show recommendations if lanes only contain the current book", () => {
+  const currentBookOnlyLanes: CollectionData = {
+    id: "related-id",
+    title: "related title",
+    url: "data-related-url",
+    books: [],
+    navigationLinks: [],
+    searchDataUrl: "/search-data-url",
+    lanes: [
+      {
+        title: "lane 1",
+        url: "/lane-1",
+        books: [fixtures.borrowableBook]
+      },
+      {
+        title: "lane 2",
+        url: "/lane-2",
+        books: [fixtures.borrowableBook]
+      }
+    ]
+  };
+  mockSwr({
+    isValidating: false,
+    data: currentBookOnlyLanes
   });
   const utils = render(<Recommendations book={fixtures.borrowableBook} />);
   expect(utils.container).toBeEmptyDOMElement();
