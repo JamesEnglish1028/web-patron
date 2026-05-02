@@ -59,6 +59,10 @@ const ReaderNavigationPanel: React.FC<ReaderNavigationPanelProps> = ({
   const [isExpanded, setIsExpanded] = React.useState(false);
   const resizeStateRef = React.useRef<"edge" | "corner" | null>(null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const storageStateKey = React.useMemo(
+    () => (storageKey ? `reader.navigationPanel.${storageKey}` : null),
+    [storageKey]
+  );
 
   const getViewportSize = () => {
     const parentRect = panelRef.current?.parentElement?.getBoundingClientRect();
@@ -68,17 +72,13 @@ const ReaderNavigationPanel: React.FC<ReaderNavigationPanelProps> = ({
     };
   };
 
-  const getStorageKey = () =>
-    storageKey ? `reader.navigationPanel.${storageKey}` : null;
-
-  const startResize = (mode: "edge" | "corner") => (
-    event: React.MouseEvent<HTMLDivElement>
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    resizeStateRef.current = mode;
-    document.body.style.cursor = "ew-resize";
-  };
+  const startResize =
+    (mode: "edge" | "corner") => (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resizeStateRef.current = mode;
+      document.body.style.cursor = "ew-resize";
+    };
 
   const toggleExpandedWidth = () => {
     if (isExpanded) {
@@ -134,11 +134,10 @@ const ReaderNavigationPanel: React.FC<ReaderNavigationPanelProps> = ({
   }, [isExpanded, minWidth, right]);
 
   React.useEffect(() => {
-    const key = getStorageKey();
-    if (!key) return;
+    if (!storageStateKey) return;
 
     try {
-      const raw = window.localStorage.getItem(key);
+      const raw = window.localStorage.getItem(storageStateKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as StoredPanelState;
       const restoredWidth =
@@ -150,22 +149,21 @@ const ReaderNavigationPanel: React.FC<ReaderNavigationPanelProps> = ({
     } catch {
       // Ignore invalid persisted panel state.
     }
-  }, [initialWidth, maxWidth, minWidth, storageKey]);
+  }, [initialWidth, maxWidth, minWidth, storageStateKey]);
 
   React.useEffect(() => {
-    const key = getStorageKey();
-    if (!key) return;
+    if (!storageStateKey) return;
 
     const payload: StoredPanelState = {
       width: panelWidth,
       expanded: isExpanded
     };
     try {
-      window.localStorage.setItem(key, JSON.stringify(payload));
+      window.localStorage.setItem(storageStateKey, JSON.stringify(payload));
     } catch {
       // Ignore storage write failures.
     }
-  }, [isExpanded, panelWidth, storageKey]);
+  }, [isExpanded, panelWidth, storageStateKey]);
 
   return (
     <Box
@@ -229,7 +227,10 @@ const ReaderNavigationPanel: React.FC<ReaderNavigationPanelProps> = ({
           sx={{
             ...iconOnlyControlButtonSx,
             "& svg": {
-              ...iconOnlyControlButtonSx["& svg"],
+              width: "1.25em",
+              height: "1.25em",
+              mr: 0,
+              ml: 0,
               transform: isExpanded ? "rotate(180deg)" : "none",
               transition: "transform 0.2s ease"
             }

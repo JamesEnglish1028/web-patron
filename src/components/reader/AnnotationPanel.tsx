@@ -57,7 +57,9 @@ const buildCitationString = (
     (annotation.pageNumber !== undefined
       ? `Page ${annotation.pageNumber}`
       : undefined);
-  const parts = [bookTitle, bookAuthor, bookPublisher].filter(Boolean) as string[];
+  const parts = [bookTitle, bookAuthor, bookPublisher].filter(
+    Boolean
+  ) as string[];
   const pageStr = pageRef ? ` (${pageRef})` : "";
   return parts.join(", ") + pageStr;
 };
@@ -204,12 +206,17 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
               color="text"
               iconLeft={ExpandMore}
               onClick={() => setIsExpanded(prev => !prev)}
-              aria-label={isExpanded ? "Collapse note area" : "Expand note area"}
+              aria-label={
+                isExpanded ? "Collapse note area" : "Expand note area"
+              }
               title={isExpanded ? "Collapse" : "Expand"}
               sx={{
                 ...iconOnlyControlButtonSx,
                 "& svg": {
-                  ...iconOnlyControlButtonSx["& svg"],
+                  width: "1.5em",
+                  height: "1.5em",
+                  mr: 0,
+                  ml: 0,
                   transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
                   transition: "transform 0.2s ease"
                 }
@@ -218,10 +225,9 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
           )}
         </Box>
 
-        <Box
-          as="textarea"
+        <textarea
           value={annotationDraft}
-          onChange={e => onAnnotationDraftChange((e.target as HTMLTextAreaElement).value)}
+          onChange={e => onAnnotationDraftChange(e.currentTarget.value)}
           placeholder={
             pendingAnnotationText ? "Optional note..." : draftPlaceholder
           }
@@ -286,9 +292,7 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
                       ? `Page ${annotation.pageNumber}`
                       : "Annotation")}
                 </Button>
-                <Box
-                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <Button
                     variant="ghost"
                     color="text"
@@ -343,19 +347,24 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
                         fontStyle: "italic"
                       }}
                     >
-                      <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                      <Text
+                        variant="text.detail"
+                        sx={{ color: "ui.gray.dark" }}
+                      >
                         &ldquo;{annotation.quotedText}&rdquo;
                       </Text>
                     </Box>
                   )}
-                  <Text variant="text.detail" sx={{ color: "ui.gray.dark", mb: 1 }}>
+                  <Text
+                    variant="text.detail"
+                    sx={{ color: "ui.gray.dark", mb: 1 }}
+                  >
                     Note
                   </Text>
-                  <Box
-                    as="textarea"
+                  <textarea
                     value={editingAnnotationDraft}
                     onChange={e =>
-                      onEditingAnnotationDraftChange((e.target as HTMLTextAreaElement).value)
+                      onEditingAnnotationDraftChange(e.currentTarget.value)
                     }
                     sx={{
                       ...textareaSx,
@@ -380,9 +389,11 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
                         background: "rgba(0,0,0,0.02)"
                       }}
                     >
-                      <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                        <Text as="span" sx={{ fontWeight: "bold" }}>Citation:</Text>
-                        {" "}
+                      <Text
+                        variant="text.detail"
+                        sx={{ color: "ui.gray.dark" }}
+                      >
+                        <span sx={{ fontWeight: "bold" }}>Citation:</span>{" "}
                         {`${citationBookTitle}, ${citationAuthor}, ${citationPublisher}${annotation.pageLabel || annotation.pageNumber !== undefined ? ` (${annotation.pageLabel || `Page ${annotation.pageNumber}`})` : ""}`}
                       </Text>
                     </Box>
@@ -396,11 +407,7 @@ export const AnnotationPanel: React.FC<AnnotationPanelProps> = ({
                     >
                       Save
                     </Button>
-                    <Button
-                      variant="ghost"
-                      color="text"
-                      onClick={onCancelEdit}
-                    >
+                    <Button variant="ghost" color="text" onClick={onCancelEdit}>
                       Cancel
                     </Button>
                   </Box>

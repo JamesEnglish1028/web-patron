@@ -375,7 +375,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const zoomOut = () => setScale(prev => Math.max(0.6, prev - 0.1));
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
-  const activeBookmark = bookmarks.find(entry => entry.pageNumber === pageNumber);
+  const activeBookmark = bookmarks.find(
+    entry => entry.pageNumber === pageNumber
+  );
 
   // UI adapters for annotation handlers
   const addBookmark = () => {
@@ -609,190 +611,189 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
       {tocActive && (
         <ReaderNavigationPanel
-              storageKey="pdf"
-              activeTab={tocTab}
-              onTabChange={setTocTab}
-              initialWidth={360}
-              minWidth={320}
-              maxWidth={720}
-              top={68}
-              right={16}
-              zIndex={21}
-              panelSx={{ p: 3 }}
-              tocContent={
-                tocItems.length > 0 ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1,
-                      overflowY: "auto",
-                      flex: 1,
-                      minHeight: 0
-                    }}
-                  >
-                    <PdfTocTree
-                      items={tocItems}
-                      activePage={pageNumber}
-                      onSelectPage={nextPage => {
-                        if (!nextPage) return;
-                        const alignedPage =
-                          pageView === "spread" && nextPage % 2 === 0
-                            ? Math.max(1, nextPage - 1)
-                            : nextPage;
-                        setPageNumber(alignedPage);
-                        setTocActive(false);
-                      }}
-                    />
-                  </Box>
-                ) : (
-                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                    No PDF outline detected. This file may not include
-                    structured TOC entries.
-                  </Text>
-                )
-              }
-              bookmarksContent={
+          storageKey="pdf"
+          activeTab={tocTab}
+          onTabChange={setTocTab}
+          initialWidth={360}
+          minWidth={320}
+          maxWidth={720}
+          top={68}
+          right={16}
+          zIndex={21}
+          panelSx={{ p: 3 }}
+          tocContent={
+            tocItems.length > 0 ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                  overflowY: "auto",
+                  flex: 1,
+                  minHeight: 0
+                }}
+              >
+                <PdfTocTree
+                  items={tocItems}
+                  activePage={pageNumber}
+                  onSelectPage={nextPage => {
+                    if (!nextPage) return;
+                    const alignedPage =
+                      pageView === "spread" && nextPage % 2 === 0
+                        ? Math.max(1, nextPage - 1)
+                        : nextPage;
+                    setPageNumber(alignedPage);
+                    setTocActive(false);
+                  }}
+                />
+              </Box>
+            ) : (
+              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                No PDF outline detected. This file may not include structured
+                TOC entries.
+              </Text>
+            )
+          }
+          bookmarksContent={
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Button variant="ghost" color="text" onClick={addBookmark}>
+                Bookmark current page
+              </Button>
+              {bookmarks.length > 0 ? (
                 <Box
                   sx={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 2,
+                    gap: 1,
+                    overflowY: "auto",
                     flex: 1,
                     minHeight: 0,
-                    overflow: "hidden"
+                    pr: 1
                   }}
                 >
-                  <Button variant="ghost" color="text" onClick={addBookmark}>
-                    Bookmark current page
-                  </Button>
-                  {bookmarks.length > 0 ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        overflowY: "auto",
-                        flex: 1,
-                        minHeight: 0,
-                        pr: 1
-                      }}
-                    >
-                      {bookmarks
-                        .slice()
-                        .sort((a, b) => a.pageNumber - b.pageNumber)
-                        .map(bookmark => (
-                          <Box
-                            key={bookmark.id}
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 2,
-                              border: "1px solid",
-                              borderColor:
-                                "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2
-                            }}
-                          >
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              sx={{
-                                justifyContent: "flex-start",
-                                px: 0,
-                                py: 0,
-                                minHeight: "unset"
-                              }}
-                              onClick={() => {
-                                const alignedPage =
-                                  pageView === "spread" &&
-                                  bookmark.pageNumber % 2 === 0
-                                    ? Math.max(1, bookmark.pageNumber - 1)
-                                    : bookmark.pageNumber;
-                                setPageNumber(alignedPage);
-                                setTocActive(false);
-                              }}
-                            >
-                              Page {bookmark.pageNumber}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              iconLeft={Trash}
-                              onClick={() => removeBookmark(bookmark.id)}
-                            >
-                              Remove
-                            </Button>
-                          </Box>
-                        ))}
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No bookmarks yet.
-                    </Text>
-                  )}
-                </Box>
-              }
-              annotationsContent={
-                <AnnotationPanel
-                  pendingAnnotationText={pendingCitationText}
-                  annotationDraft={annotationDraft}
-                  onAnnotationDraftChange={setAnnotationDraft}
-                  onRemovePendingAnnotationText={() => setPendingCitationText(null)}
-                  onAddAnnotation={addAnnotation}
-                  annotations={annotations
+                  {bookmarks
                     .slice()
                     .sort((a, b) => a.pageNumber - b.pageNumber)
-                    .map(annotation => ({
-                      id: annotation.id,
-                      note: annotation.note,
-                      quotedText: annotation.quotedText,
-                      pageNumber: annotation.pageNumber
-                    }))}
-                  editingAnnotationId={editingAnnotationId}
-                  editingAnnotationDraft={editingAnnotationDraft}
-                  onEditingAnnotationDraftChange={setEditingAnnotationDraft}
-                  onBeginEdit={annotation => {
-                    const ann = annotations.find(a => a.id === annotation.id);
-                    if (ann) beginAnnotationEdit(ann);
-                  }}
-                  onSaveEdit={saveAnnotationEdit}
-                  onCancelEdit={cancelAnnotationEdit}
-                  onDelete={removeAnnotation}
-                  onCopy={annotation => {
-                    const ann = annotations.find(a => a.id === annotation.id);
-                    if (ann) copyAnnotation(ann);
-                  }}
-                  onDownload={annotation => {
-                    const ann = annotations.find(a => a.id === annotation.id);
-                    if (!ann) return;
+                    .map(bookmark => (
+                      <Box
+                        key={bookmark.id}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 2,
+                          border: "1px solid",
+                          borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                          borderRadius: 8,
+                          p: 2
+                        }}
+                      >
+                        <Button
+                          variant="ghost"
+                          color="text"
+                          sx={{
+                            justifyContent: "flex-start",
+                            px: 0,
+                            py: 0,
+                            minHeight: "unset"
+                          }}
+                          onClick={() => {
+                            const alignedPage =
+                              pageView === "spread" &&
+                              bookmark.pageNumber % 2 === 0
+                                ? Math.max(1, bookmark.pageNumber - 1)
+                                : bookmark.pageNumber;
+                            setPageNumber(alignedPage);
+                            setTocActive(false);
+                          }}
+                        >
+                          Page {bookmark.pageNumber}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          color="text"
+                          iconLeft={Trash}
+                          onClick={() => removeBookmark(bookmark.id)}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    ))}
+                </Box>
+              ) : (
+                <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                  No bookmarks yet.
+                </Text>
+              )}
+            </Box>
+          }
+          annotationsContent={
+            <AnnotationPanel
+              pendingAnnotationText={pendingCitationText}
+              annotationDraft={annotationDraft}
+              onAnnotationDraftChange={setAnnotationDraft}
+              onRemovePendingAnnotationText={() => setPendingCitationText(null)}
+              onAddAnnotation={addAnnotation}
+              annotations={annotations
+                .slice()
+                .sort((a, b) => a.pageNumber - b.pageNumber)
+                .map(annotation => ({
+                  id: annotation.id,
+                  note: annotation.note,
+                  quotedText: annotation.quotedText,
+                  pageNumber: annotation.pageNumber
+                }))}
+              editingAnnotationId={editingAnnotationId}
+              editingAnnotationDraft={editingAnnotationDraft}
+              onEditingAnnotationDraftChange={setEditingAnnotationDraft}
+              onBeginEdit={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (ann) beginAnnotationEdit(ann);
+              }}
+              onSaveEdit={saveAnnotationEdit}
+              onCancelEdit={cancelAnnotationEdit}
+              onDelete={removeAnnotation}
+              onCopy={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (ann) copyAnnotation(ann);
+              }}
+              onDownload={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (!ann) return;
 
-                    downloadAnnotationAsRis(ann, {
-                      title,
-                      author: bookAuthors,
-                      publisher: bookPublisher,
-                      url: bookUrl || url,
-                      referenceType: "EBOOK"
-                    });
-                  }}
-                  onNavigate={annotation => {
-                    const alignedPage =
-                      pageView === "spread" && annotation.pageNumber! % 2 === 0
-                        ? Math.max(1, annotation.pageNumber! - 1)
-                        : annotation.pageNumber;
-                    setPageNumber(alignedPage!);
-                    setTocActive(false);
-                  }}
-                  saveButtonLabel="Save note"
-                  draftPlaceholder="Type a note"
-                  citationBookTitle={title}
-                  citationAuthor={bookAuthors}
-                  citationPublisher={bookPublisher}
-                />
-              }
+                downloadAnnotationAsRis(ann, {
+                  title,
+                  author: bookAuthors,
+                  publisher: bookPublisher,
+                  url: bookUrl || url,
+                  referenceType: "EBOOK"
+                });
+              }}
+              onNavigate={annotation => {
+                const alignedPage =
+                  pageView === "spread" && annotation.pageNumber! % 2 === 0
+                    ? Math.max(1, annotation.pageNumber! - 1)
+                    : annotation.pageNumber;
+                setPageNumber(alignedPage!);
+                setTocActive(false);
+              }}
+              saveButtonLabel="Save note"
+              draftPlaceholder="Type a note"
+              citationBookTitle={title}
+              citationAuthor={bookAuthors}
+              citationPublisher={bookPublisher}
             />
+          }
+        />
       )}
 
       {(searchActive || displayActive) && (
@@ -815,7 +816,6 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             p: 3
           }}
         >
-
           {searchActive && (
             <Box
               sx={{

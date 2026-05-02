@@ -99,7 +99,8 @@ export const downloadAnnotationAsRis = (
   metadata: RisMetadata
 ) => {
   const ris = buildRisRecord(annotation, metadata);
-  const seed = annotation.note || annotation.quotedText || metadata.title || "citation";
+  const seed =
+    annotation.note || annotation.quotedText || metadata.title || "citation";
   const filename = generateFilename(`${seed}-citation`, ".ris");
   download(ris, filename, "application/x-research-info-systems");
 };
