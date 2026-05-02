@@ -5,11 +5,12 @@ import Stack from "components/Stack";
 import { Text } from "components/Text";
 import Info from "icons/Info";
 import Trash from "icons/Trash";
-import Copy from "icons/Copy";
-import Pencil from "icons/Pencil";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
+import AnnotationPanel from "../AnnotationPanel";
+import ReaderNavigationPanel from "../ReaderNavigationPanel";
+import { downloadAnnotationAsRis } from "utils/ris";
 import { useAnnotationSync } from "hooks/useAnnotationSync";
 import { usePdfDocument } from "hooks/usePdfDocument";
 import { usePdfAnnotations } from "hooks/usePdfAnnotations";
@@ -374,12 +375,21 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const zoomOut = () => setScale(prev => Math.max(0.6, prev - 0.1));
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
+  const activeBookmark = bookmarks.find(entry => entry.pageNumber === pageNumber);
 
   // UI adapters for annotation handlers
   const addBookmark = () => {
     hookAddBookmark();
     setTocActive(true);
     setTocTab("bookmarks");
+  };
+
+  const toggleBookmark = () => {
+    if (activeBookmark) {
+      hookRemoveBookmark(activeBookmark.id);
+      return;
+    }
+    addBookmark();
   };
 
   const removeBookmark = (id: string) => {
@@ -544,7 +554,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             onToggleToc={openTocPanel}
             onToggleSearch={openSearchPanel}
             onToggleTheme={openDisplayPanel}
-            onAddBookmark={addBookmark}
+            onAddBookmark={toggleBookmark}
+            bookmarkActive={Boolean(activeBookmark)}
             tocActive={tocActive}
             searchActive={searchActive}
             displayActive={displayActive}
@@ -596,93 +607,52 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         </Box>
       )}
 
-      {(tocActive || searchActive || displayActive) && (
-        <Box
-          sx={{
-            position: "absolute",
-            top: 68,
-            right: 16,
-            zIndex: 20,
-            width: "min(360px, calc(100vw - 32px))",
-            maxHeight: "70vh",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            background: "var(--reader-chrome-bg, #ffffff)",
-            border: "1px solid",
-            borderColor: "var(--reader-chrome-border, #e2e8f0)",
-            borderRadius: 10,
-            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
-            p: 3
-          }}
-        >
-          {tocActive && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                flex: 1,
-                minHeight: 0,
-                overflow: "hidden"
-              }}
-            >
-              <Box sx={{ display: "flex", gap: 2, mb: 1, flexShrink: 0 }}>
-                {(
-                  [
-                    { key: "toc", label: "TOC" },
-                    { key: "bookmarks", label: "Bookmarks" },
-                    { key: "annotations", label: "Annotations" }
-                  ] as const
-                ).map(tab => (
-                  <Button
-                    key={tab.key}
-                    variant={tocTab === tab.key ? "filled" : "ghost"}
-                    color="text"
-                    onClick={() => setTocTab(tab.key)}
+      {tocActive && (
+        <ReaderNavigationPanel
+              storageKey="pdf"
+              activeTab={tocTab}
+              onTabChange={setTocTab}
+              initialWidth={360}
+              minWidth={320}
+              maxWidth={720}
+              top={68}
+              right={16}
+              zIndex={21}
+              panelSx={{ p: 3 }}
+              tocContent={
+                tocItems.length > 0 ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                      overflowY: "auto",
+                      flex: 1,
+                      minHeight: 0
+                    }}
                   >
-                    {tab.label}
-                  </Button>
-                ))}
-              </Box>
-
-              {tocTab === "toc" && (
-                <>
-                  {tocItems.length > 0 ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        overflowY: "auto",
-                        flex: 1,
-                        minHeight: 0
+                    <PdfTocTree
+                      items={tocItems}
+                      activePage={pageNumber}
+                      onSelectPage={nextPage => {
+                        if (!nextPage) return;
+                        const alignedPage =
+                          pageView === "spread" && nextPage % 2 === 0
+                            ? Math.max(1, nextPage - 1)
+                            : nextPage;
+                        setPageNumber(alignedPage);
+                        setTocActive(false);
                       }}
-                    >
-                      <PdfTocTree
-                        items={tocItems}
-                        activePage={pageNumber}
-                        onSelectPage={nextPage => {
-                          if (!nextPage) return;
-                          const alignedPage =
-                            pageView === "spread" && nextPage % 2 === 0
-                              ? Math.max(1, nextPage - 1)
-                              : nextPage;
-                          setPageNumber(alignedPage);
-                          setTocActive(false);
-                        }}
-                      />
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No PDF outline detected. This file may not include
-                      structured TOC entries.
-                    </Text>
-                  )}
-                </>
-              )}
-
-              {tocTab === "bookmarks" && (
+                    />
+                  </Box>
+                ) : (
+                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                    No PDF outline detected. This file may not include
+                    structured TOC entries.
+                  </Text>
+                )
+              }
+              bookmarksContent={
                 <Box
                   sx={{
                     display: "flex",
@@ -764,240 +734,87 @@ const PdfReader: React.FC<PdfReaderProps> = ({
                     </Text>
                   )}
                 </Box>
-              )}
-
-              {tocTab === "annotations" && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: "auto",
-                    "& .pdf-annotation-input": { width: "100%", minHeight: 84 }
+              }
+              annotationsContent={
+                <AnnotationPanel
+                  pendingAnnotationText={pendingCitationText}
+                  annotationDraft={annotationDraft}
+                  onAnnotationDraftChange={setAnnotationDraft}
+                  onRemovePendingAnnotationText={() => setPendingCitationText(null)}
+                  onAddAnnotation={addAnnotation}
+                  annotations={annotations
+                    .slice()
+                    .sort((a, b) => a.pageNumber - b.pageNumber)
+                    .map(annotation => ({
+                      id: annotation.id,
+                      note: annotation.note,
+                      quotedText: annotation.quotedText,
+                      pageNumber: annotation.pageNumber
+                    }))}
+                  editingAnnotationId={editingAnnotationId}
+                  editingAnnotationDraft={editingAnnotationDraft}
+                  onEditingAnnotationDraftChange={setEditingAnnotationDraft}
+                  onBeginEdit={annotation => {
+                    const ann = annotations.find(a => a.id === annotation.id);
+                    if (ann) beginAnnotationEdit(ann);
                   }}
-                >
-                  {pendingCitationText && (
-                    <Box
-                      sx={{
-                        borderLeft: "3px solid",
-                        borderColor: "ui.gray.medium",
-                        pl: 2,
-                        py: 1,
-                        background: "rgba(0,0,0,0.03)",
-                        borderRadius: "0 4px 4px 0"
-                      }}
-                    >
-                      <Text
-                        variant="text.detail"
-                        sx={{ color: "ui.gray.dark", mb: 1 }}
-                      >
-                        Selected text:
-                      </Text>
-                      <Text
-                        variant="text.detail"
-                        sx={{ fontStyle: "italic", mb: 1 }}
-                      >
-                        &ldquo;{pendingCitationText}&rdquo;
-                      </Text>
-                      <Button
-                        variant="ghost"
-                        color="text"
-                        onClick={() => setPendingCitationText(null)}
-                      >
-                        Remove
-                      </Button>
-                    </Box>
-                  )}
-                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                    {pendingCitationText
-                      ? "Add an optional note"
-                      : "Add a note for this page"}
-                  </Text>
-                  <textarea
-                    className="pdf-annotation-input"
-                    value={annotationDraft}
-                    onChange={event => setAnnotationDraft(event.target.value)}
-                    placeholder={
-                      pendingCitationText ? "Optional note..." : "Type a note"
-                    }
-                  />
-                  <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
-                    <Button
-                      variant="ghost"
-                      color="text"
-                      onClick={addAnnotation}
-                    >
-                      {pendingCitationText ? "Save citation" : "Save note"}
-                    </Button>
-                  </Box>
-                  {annotations.length > 0 ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        overflowY: "auto",
-                        flex: 1,
-                        minHeight: 0,
-                        pr: 1
-                      }}
-                    >
-                      {annotations
-                        .slice()
-                        .sort((a, b) => a.pageNumber - b.pageNumber)
-                        .map(annotation => (
-                          <Box
-                            key={annotation.id}
-                            sx={{
-                              border: "1px solid",
-                              borderColor:
-                                "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 2,
-                                mb: 1
-                              }}
-                            >
-                              <Button
-                                variant="ghost"
-                                color="text"
-                                onClick={() => {
-                                  const alignedPage =
-                                    pageView === "spread" &&
-                                    annotation.pageNumber % 2 === 0
-                                      ? Math.max(1, annotation.pageNumber - 1)
-                                      : annotation.pageNumber;
-                                  setPageNumber(alignedPage);
-                                  setTocActive(false);
-                                }}
-                              >
-                                Page {annotation.pageNumber}
-                              </Button>
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 1
-                                }}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  color="text"
-                                  iconLeft={Pencil}
-                                  aria-label="Edit"
-                                  title="Edit"
-                                  onClick={() =>
-                                    beginAnnotationEdit(annotation)
-                                  }
-                                  sx={iconOnlyControlButtonSx}
-                                />
-                                <Button
-                                  variant="ghost"
-                                  color="text"
-                                  iconLeft={Copy}
-                                  aria-label="Copy"
-                                  title="Copy"
-                                  onClick={() => copyAnnotation(annotation)}
-                                  sx={iconOnlyControlButtonSx}
-                                />
-                                <Button
-                                  variant="ghost"
-                                  color="text"
-                                  iconLeft={Trash}
-                                  aria-label="Delete"
-                                  title="Delete"
-                                  onClick={() =>
-                                    removeAnnotation(annotation.id)
-                                  }
-                                  sx={iconOnlyControlButtonSx}
-                                />
-                              </Box>
-                            </Box>
-                            {editingAnnotationId === annotation.id ? (
-                              <>
-                                <textarea
-                                  className="pdf-annotation-input"
-                                  value={editingAnnotationDraft}
-                                  onChange={event =>
-                                    setEditingAnnotationDraft(
-                                      event.target.value
-                                    )
-                                  }
-                                  placeholder="Edit note"
-                                />
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 2,
-                                    mt: 2
-                                  }}
-                                >
-                                  <Button
-                                    variant="ghost"
-                                    color="text"
-                                    onClick={saveAnnotationEdit}
-                                    disabled={!editingAnnotationDraft.trim()}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    color="text"
-                                    onClick={cancelAnnotationEdit}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </Box>
-                              </>
-                            ) : (
-                              <>
-                                {annotation.quotedText && (
-                                  <Box
-                                    sx={{
-                                      borderLeft: "3px solid",
-                                      borderColor: "ui.gray.medium",
-                                      pl: 2,
-                                      mb: 1,
-                                      fontStyle: "italic"
-                                    }}
-                                  >
-                                    <Text
-                                      variant="text.detail"
-                                      sx={{ color: "ui.gray.dark" }}
-                                    >
-                                      &ldquo;{annotation.quotedText}&rdquo;
-                                    </Text>
-                                  </Box>
-                                )}
-                                {annotation.note && (
-                                  <Text variant="text.detail">
-                                    {annotation.note}
-                                  </Text>
-                                )}
-                              </>
-                            )}
-                          </Box>
-                        ))}
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No annotations yet.
-                    </Text>
-                  )}
-                </Box>
-              )}
-            </Box>
-          )}
+                  onSaveEdit={saveAnnotationEdit}
+                  onCancelEdit={cancelAnnotationEdit}
+                  onDelete={removeAnnotation}
+                  onCopy={annotation => {
+                    const ann = annotations.find(a => a.id === annotation.id);
+                    if (ann) copyAnnotation(ann);
+                  }}
+                  onDownload={annotation => {
+                    const ann = annotations.find(a => a.id === annotation.id);
+                    if (!ann) return;
+
+                    downloadAnnotationAsRis(ann, {
+                      title,
+                      author: bookAuthors,
+                      publisher: bookPublisher,
+                      url: bookUrl || url,
+                      referenceType: "EBOOK"
+                    });
+                  }}
+                  onNavigate={annotation => {
+                    const alignedPage =
+                      pageView === "spread" && annotation.pageNumber! % 2 === 0
+                        ? Math.max(1, annotation.pageNumber! - 1)
+                        : annotation.pageNumber;
+                    setPageNumber(alignedPage!);
+                    setTocActive(false);
+                  }}
+                  saveButtonLabel="Save note"
+                  draftPlaceholder="Type a note"
+                  citationBookTitle={title}
+                  citationAuthor={bookAuthors}
+                  citationPublisher={bookPublisher}
+                />
+              }
+            />
+      )}
+
+      {(searchActive || displayActive) && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: 68,
+            right: 16,
+            zIndex: 20,
+            width: "min(360px, calc(100vw - 32px))",
+            maxHeight: "70vh",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            background: "var(--reader-chrome-bg, #ffffff)",
+            border: "1px solid",
+            borderColor: "var(--reader-chrome-border, #e2e8f0)",
+            borderRadius: 10,
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+            p: 3
+          }}
+        >
 
           {searchActive && (
             <Box

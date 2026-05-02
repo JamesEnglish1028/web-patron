@@ -12,11 +12,11 @@ import ChevronLeft from "icons/ChevronLeft";
 import ChevronRight from "icons/ChevronRight";
 import Info from "icons/Info";
 import Trash from "icons/Trash";
-import Copy from "icons/Copy";
-import Pencil from "icons/Pencil";
 import Stack from "components/Stack";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
+import AnnotationPanel from "../AnnotationPanel";
+import ReaderNavigationPanel from "../ReaderNavigationPanel";
 import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
@@ -27,6 +27,7 @@ import {
   loadCitations,
   saveCitations
 } from "utils/readerAnnotations";
+import { downloadAnnotationAsRis } from "utils/ris";
 import { useAnnotationSync } from "hooks/useAnnotationSync";
 import { useEpubAnnotations } from "hooks/useEpubAnnotations";
 import {
@@ -69,6 +70,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [error, setError] = React.useState<string | null>(null);
   const [progressLabel, setProgressLabel] = React.useState("");
   const [metadataTitle, setMetadataTitle] = React.useState("");
+  const [metadataAuthor, setMetadataAuthor] = React.useState("");
+  const [metadataPublisher, setMetadataPublisher] = React.useState("");
   const [fontSize, setFontSize] = React.useState(100);
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
   const [fontFamily, setFontFamily] = React.useState("publisher");
@@ -88,6 +91,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
   // Annotation management via hook
   const {
+    bookmarks,
     setBookmarks,
     setCitations,
     citationDraft,
@@ -356,7 +360,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         const titleFromBook = normalize(
           metadata?.title || metadata?.["dc:title"] || ""
         );
+        const authorFromBook = normalize(
+          metadata?.creator || metadata?.["dc:creator"]
+        );
+        const publisherFromBook = normalize(
+          metadata?.publisher || metadata?.["dc:publisher"]
+        );
         if (titleFromBook) setMetadataTitle(titleFromBook);
+        if (authorFromBook) setMetadataAuthor(authorFromBook);
+        if (publisherFromBook) setMetadataPublisher(publisherFromBook);
         let coverUrl = "";
         try {
           const cover = await book.coverUrl?.();
@@ -629,6 +641,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     </Stack>
   );
 
+  const toggleBookmark = () => {
+    if (!currentCfi) return;
+
+    const existingBookmark = bookmarks.find(entry => entry.cfi === currentCfi);
+    if (existingBookmark) {
+      removeBookmark(existingBookmark.id);
+      return;
+    }
+
+    addBookmark();
+  };
+
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
@@ -659,7 +683,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             onToggleToc={() => setShowToc(prev => !prev)}
             onToggleSearch={() => setShowSearch(prev => !prev)}
             onToggleTheme={() => setShowDisplay(prev => !prev)}
-            onAddBookmark={addBookmark}
+            onAddBookmark={toggleBookmark}
             bookmarkActive={bookmarkActive}
             tocActive={showToc}
             searchActive={showSearch}
@@ -716,33 +740,17 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       )}
 
       {showToc && (
-        <Box
-          sx={{
-            ...panelStyles.right,
-            display: "flex",
-            flexDirection: "column"
-          }}
-        >
-          <Box sx={{ display: "flex", gap: 2, mb: 2, flexShrink: 0 }}>
-            {(
-              [
-                { key: "toc", label: "TOC" },
-                { key: "bookmarks", label: "Bookmarks" },
-                { key: "annotations", label: "Annotations" }
-              ] as const
-            ).map(tab => (
-              <Button
-                key={tab.key}
-                variant={tocTab === tab.key ? "filled" : "ghost"}
-                color="text"
-                onClick={() => setTocTab(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </Box>
-
-          {tocTab === "toc" && (
+        <ReaderNavigationPanel
+          storageKey="epub"
+          activeTab={tocTab}
+          onTabChange={setTocTab}
+          initialWidth={380}
+          minWidth={320}
+          maxWidth={760}
+          top={64}
+          right={16}
+          zIndex={6}
+          tocContent={
             <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
               {tocItems.length ? (
                 tocItems.map((item: EpubTocItem, index: number) => (
@@ -762,9 +770,8 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 <Text variant="text.detail">No table of contents found.</Text>
               )}
             </Box>
-          )}
-
-          {tocTab === "bookmarks" && (
+          }
+          bookmarksContent={
             <Box
               sx={{
                 display: "flex",
@@ -858,241 +865,65 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 <Text variant="text.detail">No bookmarks yet.</Text>
               )}
             </Box>
-          )}
-
-          {tocTab === "annotations" && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                flex: 1,
-                minHeight: 0,
-                overflow: "auto"
+          }
+          annotationsContent={
+            <AnnotationPanel
+              pendingAnnotationText={pendingCitationText}
+              annotationDraft={citationDraft}
+              onAnnotationDraftChange={setCitationDraft}
+              onRemovePendingAnnotationText={() => setPendingCitationText(null)}
+              onAddAnnotation={addCitation}
+              annotations={sortedCitations.map(citation => ({
+                id: citation.id,
+                note: citation.note,
+                quotedText: citation.quotedText,
+                pageLabel: citation.pageLabel,
+                chapter: citation.chapter,
+                cfi: citation.cfi
+              }))}
+              editingAnnotationId={editingCitationId}
+              editingAnnotationDraft={editingCitationDraft}
+              onEditingAnnotationDraftChange={setEditingCitationDraft}
+              onBeginEdit={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (citation) beginCitationEdit(citation);
               }}
-            >
-              {pendingCitationText && (
-                <Box
-                  sx={{
-                    borderLeft: "3px solid",
-                    borderColor: "ui.gray.medium",
-                    pl: 2,
-                    py: 1,
-                    background: "rgba(0,0,0,0.03)",
-                    borderRadius: "0 4px 4px 0"
-                  }}
-                >
-                  <Text
-                    variant="text.detail"
-                    sx={{ color: "ui.gray.dark", mb: 1 }}
-                  >
-                    Selected text:
-                  </Text>
-                  <Text
-                    variant="text.detail"
-                    sx={{ fontStyle: "italic", mb: 1 }}
-                  >
-                    &ldquo;{pendingCitationText}&rdquo;
-                  </Text>
-                  <Button
-                    variant="ghost"
-                    color="text"
-                    onClick={() => setPendingCitationText(null)}
-                  >
-                    Remove
-                  </Button>
-                </Box>
-              )}
-              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                {pendingCitationText
-                  ? "Add an optional note"
-                  : "Add a note for the current location"}
-              </Text>
-              <InputBox
-                as="textarea"
-                value={citationDraft}
-                onChange={e => setCitationDraft(e.target.value)}
-                placeholder={
-                  pendingCitationText ? "Optional note..." : "Type a note"
-                }
-                sx={{
-                  width: "100%",
-                  minHeight: 84,
-                  border: "1px solid",
-                  borderColor: "var(--reader-chrome-border, #e2e8f0)",
-                  borderRadius: 8,
-                  p: 2,
-                  background: "transparent",
-                  color: "var(--reader-chrome-text, inherit)"
-                }}
-              />
-              <Box>
-                <Button variant="ghost" color="text" onClick={addCitation}>
-                  {pendingCitationText ? "Save citation" : "Save note"}
-                </Button>
-              </Box>
+              onSaveEdit={saveCitationEdit}
+              onCancelEdit={cancelCitationEdit}
+              onDelete={removeCitation}
+              onCopy={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (citation) copyCitation(citation);
+              }}
+              onDownload={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (!citation) return;
 
-              {sortedCitations.length > 0 ? (
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                    overflowY: "auto",
-                    flex: 1,
-                    minHeight: 0,
-                    pr: 1
-                  }}
-                >
-                  {sortedCitations.map(citation => (
-                    <Box
-                      key={citation.id}
-                      sx={{
-                        border: "1px solid",
-                        borderColor: "var(--reader-chrome-border, #e2e8f0)",
-                        borderRadius: 8,
-                        p: 2
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 2,
-                          mb: 1
-                        }}
-                      >
-                        <Button
-                          variant="ghost"
-                          color="text"
-                          onClick={() => navigateTo(citation.cfi)}
-                        >
-                          {citation.chapter ||
-                            citation.pageLabel ||
-                            "Annotation"}
-                        </Button>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Pencil}
-                            aria-label="Edit"
-                            title="Edit"
-                            onClick={() => beginCitationEdit(citation)}
-                            sx={iconOnlyControlButtonSx}
-                          />
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Copy}
-                            aria-label="Copy"
-                            title="Copy"
-                            onClick={() => copyCitation(citation)}
-                            sx={iconOnlyControlButtonSx}
-                          />
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Trash}
-                            aria-label="Delete"
-                            title="Delete"
-                            onClick={() => removeCitation(citation.id)}
-                            sx={iconOnlyControlButtonSx}
-                          />
-                        </Box>
-                      </Box>
-                      {editingCitationId === citation.id ? (
-                        <>
-                          <InputBox
-                            as="textarea"
-                            value={editingCitationDraft}
-                            onChange={e =>
-                              setEditingCitationDraft(e.target.value)
-                            }
-                            sx={{
-                              width: "100%",
-                              minHeight: 84,
-                              border: "1px solid",
-                              borderColor:
-                                "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2,
-                              mb: 2,
-                              background: "transparent",
-                              color: "var(--reader-chrome-text, inherit)"
-                            }}
-                          />
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 2
-                            }}
-                          >
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              onClick={saveCitationEdit}
-                              disabled={!editingCitationDraft.trim()}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              onClick={cancelCitationEdit}
-                            >
-                              Cancel
-                            </Button>
-                          </Box>
-                        </>
-                      ) : (
-                        <>
-                          {citation.quotedText && (
-                            <Box
-                              sx={{
-                                borderLeft: "3px solid",
-                                borderColor: "ui.gray.medium",
-                                pl: 2,
-                                mb: 1,
-                                fontStyle: "italic"
-                              }}
-                            >
-                              <Text
-                                variant="text.detail"
-                                sx={{ color: "ui.gray.dark" }}
-                              >
-                                &ldquo;{citation.quotedText}&rdquo;
-                              </Text>
-                            </Box>
-                          )}
-                          {citation.note && (
-                            <Text variant="text.detail" sx={{ mb: 2 }}>
-                              {citation.note}
-                            </Text>
-                          )}
-                          {citation.pageLabel && (
-                            <Text
-                              variant="text.detail"
-                              sx={{ color: "ui.gray.dark", mb: 2 }}
-                            >
-                              {citation.pageLabel}
-                            </Text>
-                          )}
-                        </>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Text variant="text.detail">No annotations yet.</Text>
-              )}
-            </Box>
-          )}
-        </Box>
+                downloadAnnotationAsRis(citation, {
+                  title: metadataTitle || title,
+                  author: metadataAuthor,
+                  publisher: metadataPublisher,
+                  url: bookUrl || url,
+                  referenceType: "EBOOK"
+                });
+              }}
+              onNavigate={annotation => {
+                if (annotation.cfi) navigateTo(annotation.cfi);
+              }}
+              saveButtonLabel="Save note"
+              draftPlaceholder="Type a note"
+              citationBookTitle={metadataTitle || title}
+              citationAuthor={metadataAuthor}
+              citationPublisher={metadataPublisher}
+            />
+          }
+        />
       )}
 
       {showSearch && (
