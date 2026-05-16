@@ -15,7 +15,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             pr: "2rem",
             py: 1,
             border: "solid",
-            borderRadius: 1,
+            borderRadius: "button",
             variant: "text.body.regular",
             fontSize: "-1"
           }}

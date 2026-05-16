@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMenuStore, MenuButton, Menu } from "@ariakit/react/menu";
-import { Icon, IconNames } from "@nypl/design-system-react-components";
 import Account from "../icons/Account";
+import Close from "../icons/Close";
 import Copy from "../icons/Copy";
 import { SignOut } from "./SignOut";
 import useUser from "./context/UserContext";
@@ -63,11 +63,7 @@ export const AccountMenu: React.FC = () => {
             }}
             aria-label="Close account menu"
           >
-            <Icon
-              decorative={false}
-              name={IconNames.close}
-              sx={{ fontSize: 18 }}
-            />
+            <Close sx={{ fontSize: 18 }} />
           </Button>
         </div>
 

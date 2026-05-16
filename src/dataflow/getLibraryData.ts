@@ -32,11 +32,31 @@ export async function fetchAuthDocument(
 ): Promise<OPDS1.AuthDocument> {
   const response = await fetch(url);
   if (!response.ok) {
-    const details = await response.json();
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
+    const details =
+      contentType.includes("application/json") || contentType.includes("+json")
+        ? await response.json()
+        : {
+            title: "Server Error",
+            detail:
+              (await response.text()).trim().slice(0, 300) ||
+              "Unexpected non-JSON error response body.",
+            status: response.status
+          };
     throw new ServerError(url, response.status, details);
   }
   const json = await response.json();
   return json;
+}
+
+export async function resolveCatalogUrl(url: string): Promise<string> {
+  try {
+    const response = await fetch(url, { method: "HEAD" });
+    return response.url || url;
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -86,7 +106,8 @@ function getCatalogUrl(authDoc: OPDS1.AuthDocument): string {
  */
 export function buildLibraryData(
   authDoc: OPDS1.AuthDocument,
-  librarySlug: string
+  librarySlug: string,
+  catalogUrlOverride?: string
 ): LibraryData {
   const logoUrl = authDoc.links?.find(link => link.rel === "logo")?.href;
   const headerLinks =
@@ -95,7 +116,7 @@ export function buildLibraryData(
   const authMethods = normalizeAuthMethods(authDoc);
   const shelfUrl = getShelfUrl(authDoc);
   const userProfileUrl = getUserProfileUrl(authDoc);
-  const catalogUrl = getCatalogUrl(authDoc);
+  const catalogUrl = catalogUrlOverride ?? getCatalogUrl(authDoc);
   return {
     slug: librarySlug,
     catalogUrl,

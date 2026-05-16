@@ -8,7 +8,7 @@ const styles = {
     fontWeight: "light",
     fontSize: 0,
     lineHeight: 3,
-    color: "ui.black"
+    color: "ui.gray.extraDark"
   }
 };
 

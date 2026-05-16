@@ -15,6 +15,7 @@ import useSWR from "swr";
 import { BasicTokenAuthType } from "types/opds1";
 import { PATRON_PROFILE_FIELDS } from "types/patronProfile";
 import { addHours } from "date-fns";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 /**
  * Captures authentication failure context for redirect-based auth methods.
@@ -273,20 +274,45 @@ export default function useUser() {
 
 // we only need the books out of a collection for loans,
 // so this is a utility to extract those.
-async function fetchLoans(url: string, token: string) {
+async function fetchLoans([url, token]: readonly [
+  string,
+  string | undefined,
+  AppAuthMethod["type"]
+]) {
   const collection = await fetchCollection(url, token);
   return collection.books;
 }
 
-async function fetchPatronProfile(url: string, token: string) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: token
-    }
+async function fetchPatronProfile([url, token]: readonly [
+  string,
+  string | undefined
+]) {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = token;
+  }
+
+  const response = await fetch(toBrowserFetchUrl(url), {
+    headers
   });
 
   if (!response.ok) {
-    throw new ServerError(url, response.status, await response.json());
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("+json")
+    ) {
+      throw new ServerError(url, response.status, await response.json());
+    }
+
+    const text = await response.text();
+    throw new ServerError(url, response.status, {
+      title: "Server Error",
+      detail:
+        text.trim().slice(0, 300) || "Unexpected non-JSON error response body.",
+      status: response.status
+    });
   }
 
   return response.json();

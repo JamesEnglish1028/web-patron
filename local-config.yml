@@ -1,0 +1,36 @@
+instance_name: Patron Web Catalog - Localhost
+
+media_support:
+  application/epub+zip: show
+  application/kepub+zip: show
+  application/pdf: show
+  application/x-mobipocket-ebook: show
+  application/x-mobi8-ebook: show
+  application/vnd.overdrive.circulation.api+json;profile=ebook: show
+  text/html;profile="http://librarysimplified.org/terms/profiles/streaming-media": show
+  text/html;profile=http://librarysimplified.org/terms/profiles/streaming-media: show
+  application/audiobook+json: show
+  application/vnd.overdrive.circulation.api+json;profile=audiobook: show
+  application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+  # LCP-encrypted audiobooks cannot be decrypted by a web browser.
+  # Redirect patrons to the Palace mobile app which has LCP DRM support.
+  application/audiobook+lcp: redirect
+  application/vnd.librarysimplified.findaway.license+json: redirect
+  application/atom+xml;type=entry;profile=opds-catalog:
+    text/html;profile="http://librarysimplified.org/terms/profiles/streaming-media": show
+  application/vnd.adobe.adept+xml:
+    application/epub+zip: redirect-and-show
+  application/vnd.librarysimplified.bearer-token+json:
+    application/pdf: show
+    application/epub+zip: show
+    application/audiobook+json: show
+    application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+    # LCP audiobooks via bearer-token are still not playable in a web browser
+    application/audiobook+lcp: redirect
+
+companion_app: simplye
+
+libraries:
+  lib1:
+    authDocUrl: http://localhost:6500/lib1/authentication_document
+    title: Lib1

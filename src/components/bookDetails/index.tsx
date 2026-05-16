@@ -9,11 +9,8 @@ import { truncateString } from "../../utils/string";
 import DetailField from "../BookMetaDetail";
 import ReportProblem from "./ReportProblem";
 import Head from "next/head";
-import { H1, H2, H3, ScreenReaderOnly, Text } from "components/Text";
+import { H1, H2, ScreenReaderOnly, Text } from "components/Text";
 import MediumIndicator from "components/MediumIndicator";
-import PalaceLogo from "components/PalaceLogo";
-import IosBadge from "components/storeBadges/IosBadge";
-import GooglePlayBadge from "components/storeBadges/GooglePlayBadge";
 import { useRouter } from "next/router";
 import extractParam from "dataflow/utils";
 import useSWR from "swr";
@@ -24,7 +21,7 @@ import { useAppConfig } from "components/context/AppConfigContext";
 import { getAuthors, getLanguageLabel } from "utils/book";
 
 export const BookDetails: React.FC = () => {
-  const { companionApp, showMedium } = useAppConfig();
+  const { showMedium } = useAppConfig();
   const { query } = useRouter();
   const bookUrl = extractParam(query, "bookUrl");
   const { data, error } = useSWR(bookUrl ?? null, fetchBook);
@@ -60,10 +57,6 @@ export const BookDetails: React.FC = () => {
         >
           <div sx={{ flex: ["1 1 auto", 0.33], mr: [0, 4], mb: [3, 0] }}>
             <BookCover book={book} sx={{ maxWidth: [180, "initial"] }} />
-
-            {companionApp === "simplye" && (
-              <SimplyECallout sx={{ display: ["none", "block"] }} />
-            )}
           </div>
           <div
             sx={{
@@ -72,16 +65,25 @@ export const BookDetails: React.FC = () => {
               flexDirection: "column"
             }}
           >
-            <H1 sx={{ m: 0 }}>
-              <ScreenReaderOnly>Book title: </ScreenReaderOnly>
-              {book.title}
-              {book.subtitle && `: ${book.subtitle}`}
-            </H1>
+            <div
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                rowGap: 2,
+                mb: 2
+              }}
+            >
+              <H1 sx={{ m: 0 }}>
+                <ScreenReaderOnly>Book title: </ScreenReaderOnly>
+                {book.title}
+                {book.subtitle && `: ${book.subtitle}`}
+              </H1>
 
-            <Text variant="text.callouts.regular">
-              by&nbsp;
-              {getAuthors(book)?.join(", ") ?? "Unknown"}
-            </Text>
+              <Text variant="text.callouts.regular">
+                by&nbsp;
+                {getAuthors(book)?.join(", ") ?? "Unknown"}
+              </Text>
+            </div>
             {showMedium && <MediumIndicator book={book} />}
             <FulfillmentCard book={book} sx={{ mt: 3 }} />
             <Summary book={book} />
@@ -134,32 +136,5 @@ const Summary: React.FC<{ book: AnyBook; className?: string }> = ({
     />
   </div>
 );
-
-const SimplyECallout: React.FC<{ className?: string }> = ({ className }) => {
-  return (
-    <section
-      sx={{
-        mt: 4,
-        bg: "ui.gray.lightWarm",
-        display: "flex",
-        flexDirection: "column",
-        p: 3,
-        textAlign: "center"
-      }}
-      className={className}
-    >
-      <PalaceLogo sx={{ mt: 3, height: "120px" }} />
-      <H3 sx={{ mt: 0 }}>Download Palace</H3>
-      <Text>
-        Browse and read our collection of ebooks and audiobooks right from your
-        phone.
-      </Text>
-      <div sx={{ maxWidth: 140, mx: "auto", mt: 3 }}>
-        <IosBadge sx={{ m: "6%" }} />
-        <GooglePlayBadge />
-      </div>
-    </section>
-  );
-};
 
 export default BookDetails;

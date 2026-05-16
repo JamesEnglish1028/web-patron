@@ -28,7 +28,7 @@ module.exports = {
     }
   ],
   root: true,
-  ignorePatterns: ["_next", "next-env.d.ts"],
+  ignorePatterns: ["_next", "next-env.d.ts", ".storybook/**/*"],
   env: {
     browser: true,
     node: true
@@ -51,7 +51,7 @@ module.exports = {
     "plugin:@typescript-eslint/recommended",
     "plugin:react/recommended",
     "plugin:jsx-a11y/strict",
-    "plugin:@next/next/recommended",
+    "plugin:@next/next/recommended-legacy",
     "plugin:prettier/recommended",
     "prettier"
   ],

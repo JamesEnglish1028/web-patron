@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`LinkButton renders correct element 1`] = `
 .emotion-0 {
@@ -25,7 +25,7 @@ exports[`LinkButton renders correct element 1`] = `
   padding-left: 16px;
   padding-right: 16px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
   -webkit-text-decoration: none;
   text-decoration: none;
@@ -94,7 +94,7 @@ exports[`NavButton renders correct element 1`] = `
   padding-left: 16px;
   padding-right: 16px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
   background-color: var(--theme-ui-colors-brand-primary);
   height: 32px;
@@ -163,7 +163,7 @@ exports[`variants filled (default) 1`] = `
   padding-left: 16px;
   padding-right: 16px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
   -webkit-text-decoration: none;
   text-decoration: none;
@@ -229,7 +229,7 @@ exports[`variants ghost 1`] = `
   padding-left: 16px;
   padding-right: 16px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
   -webkit-text-decoration: none;
   text-decoration: none;
@@ -244,12 +244,19 @@ exports[`variants ghost 1`] = `
 .emotion-0:hover {
   background-color: #d7e7f4;
   color: var(--theme-ui-colors-brand-primary);
+  fill: var(--theme-ui-colors-brand-primary);
   -webkit-text-decoration: none;
   text-decoration: none;
 }
 
 .emotion-0:focus {
   box-shadow: 0 0 0 0.2em rgba(0, 109, 255, 0.4);
+}
+
+.emotion-0:active {
+  background-color: #c3daee;
+  color: var(--theme-ui-colors-brand-primary);
+  fill: var(--theme-ui-colors-brand-primary);
 }
 
 <button
@@ -281,7 +288,7 @@ exports[`variants link 1`] = `
   padding-left: 16px;
   padding-right: 16px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 8px;
   cursor: pointer;
   -webkit-text-decoration: underline;
   text-decoration: underline;

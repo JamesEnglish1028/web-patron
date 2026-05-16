@@ -1,0 +1,33 @@
+instance_name: Patron Web Catalog - Minotaur Test
+
+media_support:
+  application/epub+zip: show
+  application/kepub+zip: show
+  application/pdf: show
+  application/x-mobipocket-ebook: show
+  application/x-mobi8-ebook: show
+  application/vnd.overdrive.circulation.api+json;profile=ebook: show
+  text/html;profile="http://librarysimplified.org/terms/profiles/streaming-media": show
+  text/html;profile=http://librarysimplified.org/terms/profiles/streaming-media: show
+  application/audiobook+json: show
+  application/vnd.overdrive.circulation.api+json;profile=audiobook: redirect
+  application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+  application/audiobook+lcp: show
+  application/vnd.librarysimplified.findaway.license+json: redirect
+  application/atom+xml;type=entry;profile=opds-catalog:
+    text/html;profile="http://librarysimplified.org/terms/profiles/streaming-media": show
+  application/vnd.adobe.adept+xml:
+    application/epub+zip: redirect-and-show
+  application/vnd.librarysimplified.bearer-token+json:
+    application/pdf: show
+    application/epub+zip: show
+    application/audiobook+json: show
+    application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+    application/audiobook+lcp: show
+
+companion_app: simplye
+
+libraries:
+  minotaur-test:
+    authDocUrl: https://minotaur.dev.palaceproject.io/minotaur-test-library/authentication_document
+    title: Minotaur Test Library

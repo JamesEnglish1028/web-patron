@@ -58,7 +58,8 @@ export const InfiniteBookList: React.FC<{ firstPageUrl: string }> = ({
   };
   const { data, size, error, setSize } = useSWRInfinite(
     getKey,
-    fetchCollection
+    ([url, tok]: readonly [string, string | undefined]) =>
+      fetchCollection(url, tok)
   );
 
   const isFetchingInitialData = !data && !error;

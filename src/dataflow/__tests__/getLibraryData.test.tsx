@@ -161,6 +161,16 @@ describe("buildLibraryData", () => {
     });
   });
 
+  test("uses a resolved catalog url override when provided", () => {
+    const library = buildLibraryData(
+      fixtures.authDoc,
+      "librarySlug",
+      "/catalog-root/groups/"
+    );
+
+    expect(library.catalogUrl).toBe("/catalog-root/groups/");
+  });
+
   test("throws ApplicationError with auth doc URL, if auth doc has no catalog root url", () => {
     // Make sure that the error is actually thrown.
     expect.assertions(2);

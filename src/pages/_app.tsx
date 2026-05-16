@@ -1,15 +1,13 @@
 import * as React from "react";
-import ReactDOM from "react-dom";
 import { AppProps, NextWebVitalsMetric } from "next/app";
-import { IS_SERVER, REACT_AXE } from "../utils/env";
 import { ErrorBoundary } from "components/ErrorBoundary";
-import "@nypl/design-system-react-components/dist/styles.css";
 import "css-overrides.css";
 import track from "analytics/track";
 import { BreadcrumbProvider } from "components/context/BreadcrumbContext";
 import AppConfigContext from "components/context/AppConfigContext";
 import { initBugsnag } from "analytics/bugsnag";
 import { setMediaSupportConfig } from "utils/fulfill";
+import { setFetchMediaSupportConfig } from "dataflow/opds1/fetch";
 import type { AppConfig } from "interfaces";
 import FALLBACK_APP_CONFIG from "config/fallbackAppConfig";
 
@@ -43,6 +41,7 @@ const MyApp = (props: AppProps) => {
   // Both functions are idempotent, so repeated calls from concurrent-mode retries are safe.
   initBugsnag(appConfig);
   setMediaSupportConfig(appConfig.mediaSupport);
+  setFetchMediaSupportConfig(appConfig.mediaSupport);
 
   return (
     <AppConfigContext.Provider value={appConfig}>
@@ -54,11 +53,6 @@ const MyApp = (props: AppProps) => {
     </AppConfigContext.Provider>
   );
 };
-
-if (process.env.NODE_ENV === "development" && !IS_SERVER && REACT_AXE) {
-  const axe = require("@axe-core/react");
-  axe(React, ReactDOM, 1000, {});
-}
 
 export function reportWebVitals(metric: NextWebVitalsMetric) {
   track.webVitals(metric);

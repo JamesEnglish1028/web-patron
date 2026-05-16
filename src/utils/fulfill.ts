@@ -11,6 +11,7 @@ import {
 import { DownloadMediaType, ReadOnlineMediaType } from "types/opds1";
 import { bookIsAudiobook } from "utils/book";
 import { typeMap } from "utils/file";
+import { expandTemplatedUri, UriTemplateTerms } from "utils/opds";
 
 let _mediaSupport: MediaSupportConfig = {};
 
@@ -52,6 +53,7 @@ export type ReadInternalFulfillment = {
   url: string;
   contentType?: string;
   buttonLabel: string;
+  getLocation?: GetLocationWithIndirection;
 };
 export type ReadExternalFulfillment = {
   type: "read-online-external";
@@ -71,11 +73,33 @@ export type SupportedFulfillment =
 
 export type AnyFullfillment = SupportedFulfillment | UnsupportedFulfillment;
 
+export const isPalaceManagerLikeUrl = (value: string) => {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith("palace.io") ||
+      hostname.endsWith("palaceproject.io") ||
+      hostname.endsWith("thepalaceproject.org")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const getFulfillmentFromLink =
   (book: AnyBook) =>
   (link: FulfillmentLink): AnyFullfillment => {
     const { contentType, indirectionType, supportLevel } = link;
     const action = bookIsAudiobook(book) ? "Listen" : "Read";
+    const linkTemplateData = link.templated
+      ? {
+          templated: link.templated,
+          uriTemplateVariables: link.uriTemplateVariables
+        }
+      : undefined;
 
     // don't show fulfillment option if it is unsupported or only allows
     // a redirect to the companion app.
@@ -98,25 +122,80 @@ export const getFulfillmentFromLink =
       return { type: "unsupported" };
     }
 
-    switch (contentType) {
+    switch (String(contentType)) {
       case OPDS1.PdfMediaType:
-      case OPDS1.Mobi8Mediatype:
-      case OPDS1.MobiPocketMediaType:
-      case OPDS1.EpubMediaType:
+      case OPDS1.EpubMediaType: {
+        const normalizedIndirection = String(indirectionType || "");
+        const isAdobeDrm =
+          normalizedIndirection === OPDS1.AdobeDrmMediaType ||
+          normalizedIndirection === OPDS1.IncorrectAdobeDrmMediaType;
+        if (!isAdobeDrm) {
+          return {
+            id: link.url,
+            type: "read-online-internal",
+            url: link.url,
+            contentType,
+            buttonLabel: action,
+            getLocation: constructGetLocation(
+              indirectionType,
+              contentType,
+              link.url,
+              linkTemplateData
+            )
+          };
+        }
         const typeName = typeMap[contentType].name;
-        const modifier =
-          indirectionType === OPDS1.AdobeDrmMediaType ? "Adobe " : "";
         return {
           id: link.url,
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           ),
           type: "download",
-          buttonLabel: `Download ${modifier}${typeName}`,
-          contentType
+          buttonLabel: `Download Adobe ${typeName}`,
+          contentType: contentType as DownloadMediaType
         };
+      }
+      case OPDS1.AudiobookMediaType:
+      case OPDS1.AccessRestrictionAudiobookMediaType: {
+        return {
+          id: link.url,
+          type: "read-online-internal",
+          url: link.url,
+          contentType,
+          buttonLabel: action,
+          getLocation: constructGetLocation(
+            indirectionType,
+            contentType,
+            link.url,
+            linkTemplateData
+          )
+        };
+      }
+      case OPDS1.LcpAudioBookMediaType: {
+        // LCP-encrypted audiobooks require a DRM-capable reading system.
+        // Web browsers cannot decrypt LCP content, so direct in-app playback
+        // is not supported. Redirect patrons to the companion mobile app.
+        return { type: "unsupported" };
+      }
+      case OPDS1.Mobi8Mediatype:
+      case OPDS1.MobiPocketMediaType: {
+        const typeName = typeMap[contentType].name;
+        return {
+          id: link.url,
+          getLocation: constructGetLocation(
+            indirectionType,
+            contentType,
+            link.url,
+            linkTemplateData
+          ),
+          type: "download",
+          buttonLabel: `Download ${typeName}`,
+          contentType: contentType as DownloadMediaType
+        };
+      }
 
       case OPDS1.ExternalReaderMediaType:
       case OPDS1.ExternalReaderMediaTypeUnquoted:
@@ -126,9 +205,10 @@ export const getFulfillmentFromLink =
           getLocation: constructGetLocation(
             indirectionType,
             contentType,
-            link.url
+            link.url,
+            linkTemplateData
           ),
-          contentType,
+          contentType: contentType as ReadOnlineMediaType,
           buttonLabel: `${action} Online`
         };
 
@@ -175,25 +255,85 @@ function isSupported(
  */
 type GetLocationWithIndirection = (
   catalogUrl: string,
-  token?: string
+  token?: string,
+  options?: { patronId?: string; basicToken?: string }
 ) => Promise<AuthorizedLocation>;
+
+/**
+ * Expand a templated fulfillment URL using the patron's identifier.
+ * When a uri_template_variables map is present the expansion is driven by
+ * term-URI lookups; otherwise common variable names (patronId, patron_id,
+ * barcode, etc.) are tried as fallbacks.
+ */
+function expandFulfillmentUrl(
+  url: string,
+  templated: boolean | undefined,
+  uriTemplateVariables:
+    | Record<string, { term: string; required?: boolean }>
+    | undefined,
+  patronId?: string
+): string {
+  if (!templated || !patronId) return url;
+  try {
+    return expandTemplatedUri(url, uriTemplateVariables ?? {}, {
+      termValues: {
+        [UriTemplateTerms.PATRON_ID]: patronId
+      },
+      fallbacks: {
+        patronId,
+        // eslint-disable-next-line camelcase
+        patron_id: patronId,
+        barcode: patronId,
+        username: patronId,
+        // eslint-disable-next-line camelcase
+        authorization_identifier: patronId
+      }
+    });
+  } catch {
+    // If expansion fails (e.g. a required variable has no value), return the
+    // original URL so existing non-templated flows are not disrupted.
+    return url;
+  }
+}
+
 const constructGetLocation =
   (
     indirectionType: OPDS1.IndirectAcquisitionType | undefined,
     contentType: OPDS1.AnyBookMediaType,
-    url: string
+    url: string,
+    linkTemplateData?: {
+      templated?: boolean;
+      uriTemplateVariables?: Record<
+        string,
+        { term: string; required?: boolean }
+      >;
+    }
   ): GetLocationWithIndirection =>
-  async (catalogUrl: string, token?: string) => {
+  async (
+    catalogUrl: string,
+    token?: string,
+    options?: { patronId?: string; basicToken?: string }
+  ) => {
+    const resolvedUrl = expandFulfillmentUrl(
+      url,
+      linkTemplateData?.templated,
+      linkTemplateData?.uriTemplateVariables,
+      options?.patronId
+    );
     /**
      * If there is OPDS Entry Indirection, we fetch the actual link
      * from within an entry
      */
     if (indirectionType === OPDS1.OPDSEntryMediaType) {
-      const book = (await fetchBook(url, catalogUrl, token)) as FulfillableBook;
-      const resolvedUrl = book.fulfillmentLinks?.find(
+      const book = (await fetchBook(
+        resolvedUrl,
+        catalogUrl,
+        token
+      )) as FulfillableBook;
+      const entryUrl = book.fulfillmentLinks?.find(
         link => link.contentType === contentType
       )?.url;
-      if (!resolvedUrl) {
+      if (!entryUrl) {
         throw new ApplicationError({
           title: "OPDS Error",
           detail:
@@ -201,23 +341,105 @@ const constructGetLocation =
         });
       }
       return {
-        url: resolvedUrl,
+        url: entryUrl,
         token
       };
     }
 
     if (indirectionType === OPDS1.BearerTokenMediaType) {
-      const bearerToken = await fetchBearerToken(url, token);
+      // Palace CM can identify the patron via either Basic credentials or the
+      // session Bearer token. Prefer Basic when available (some deployments
+      // require it for the vendor proxy); fall back to Bearer for auth methods
+      // that issue only a Bearer token.
+      const cmAuth = isPalaceManagerLikeUrl(resolvedUrl)
+        ? options?.basicToken || token
+        : token;
+      const bearerToken = await fetchBearerToken(resolvedUrl, cmAuth, {
+        Accept: OPDS1.BearerTokenMediaType
+      });
+      const tokenType = bearerToken.token_type || "Bearer";
 
       return {
         url: bearerToken.location,
-        token: `${bearerToken.token_type} ${bearerToken.access_token}`
+        token: `${tokenType} ${bearerToken.access_token}`
       };
+    }
+
+    // Some audiobook feeds expose a direct fulfill URL but still require
+    // bearer-token exchange to return { location, token }.
+    // LCP audiobooks are excluded here — they are marked unsupported above.
+    if (
+      [
+        OPDS1.AudiobookMediaType,
+        OPDS1.AccessRestrictionAudiobookMediaType
+      ].includes(contentType)
+    ) {
+      if (isPalaceManagerLikeUrl(resolvedUrl)) {
+        // Prefer Basic credentials when available; fall back to Bearer token
+        // for auth methods that issue only a Palace Manager Bearer token.
+        return {
+          url: resolvedUrl,
+          token: options?.basicToken || token
+        };
+      }
+
+      try {
+        const bearerToken = await fetchBearerToken(resolvedUrl, token, {
+          Accept: OPDS1.BearerTokenMediaType
+        });
+        if (bearerToken?.location && bearerToken?.access_token) {
+          const tokenType = bearerToken.token_type || "Bearer";
+          return {
+            url: bearerToken.location,
+            token: `${tokenType} ${bearerToken.access_token}`
+          };
+        }
+      } catch {
+        try {
+          const audiobookEntry = (await fetchBook(
+            resolvedUrl,
+            catalogUrl,
+            token
+          )) as FulfillableBook;
+          const audiobookLink = audiobookEntry.fulfillmentLinks?.find(link =>
+            [
+              OPDS1.AudiobookMediaType,
+              OPDS1.AccessRestrictionAudiobookMediaType
+            ].includes(link.contentType)
+          );
+
+          if (audiobookLink) {
+            if (audiobookLink.indirectionType === OPDS1.BearerTokenMediaType) {
+              const bearerToken = await fetchBearerToken(
+                audiobookLink.url,
+                token,
+                {
+                  Accept: OPDS1.BearerTokenMediaType
+                }
+              );
+              if (bearerToken?.location && bearerToken?.access_token) {
+                const tokenType = bearerToken.token_type || "Bearer";
+                return {
+                  url: bearerToken.location,
+                  token: `${tokenType} ${bearerToken.access_token}`
+                };
+              }
+            }
+
+            return {
+              url: audiobookLink.url,
+              token
+            };
+          }
+        } catch {
+          // fall back to direct URL flow
+        }
+      }
     }
 
     // otherwise there is no indirection, just return the url and token.
     return {
-      url,
+      url: resolvedUrl,
       token
     };
   };

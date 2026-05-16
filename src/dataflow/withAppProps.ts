@@ -3,7 +3,8 @@ import { GetStaticProps, GetStaticPropsContext } from "next";
 import {
   getAuthDocUrl,
   fetchAuthDocument,
-  buildLibraryData
+  buildLibraryData,
+  resolveCatalogUrl
 } from "dataflow/getLibraryData";
 import ApplicationError, { PageNotFoundError } from "errors";
 import extractParam from "dataflow/utils";
@@ -35,7 +36,15 @@ export default function withAppProps(
       const appConfig = await getAppConfig();
       const authDocUrl = await getAuthDocUrl(librarySlug);
       const authDocument = await fetchAuthDocument(authDocUrl);
-      const library = buildLibraryData(authDocument, librarySlug);
+      const resolvedCatalogUrl = await resolveCatalogUrl(
+        authDocument.links?.find(link => link.rel === OPDS1.CatalogRootRel)
+          ?.href ?? ""
+      );
+      const library = buildLibraryData(
+        authDocument,
+        librarySlug,
+        resolvedCatalogUrl || undefined
+      );
       // fetch the static props for the page
       const pageResult = (await pageGetStaticProps?.(ctx)) ?? { props: {} };
       const pageProps = "props" in pageResult ? pageResult.props : {};

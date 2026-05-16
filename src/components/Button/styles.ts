@@ -102,6 +102,7 @@ export const styleProps = (
       };
 
     case "ghost":
+      const hoverTextColor = color === "ui.white" ? "ui.black" : color;
       return {
         // sets the text style
         variant: "text.body.bold",
@@ -112,14 +113,17 @@ export const styleProps = (
         fill: color,
         "&:focus,&:hover": {
           bg: lightness(color, 0.9),
-          color: color,
+          color: hoverTextColor,
+          fill: hoverTextColor,
           textDecoration: "none"
         },
         "&:focus": {
           boxShadow: "focus"
         },
         "&:active": {
-          // bg: darken(color, 0.1)
+          bg: lightness(color, 0.85),
+          color: hoverTextColor,
+          fill: hoverTextColor
         }
       };
 

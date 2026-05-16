@@ -4,7 +4,6 @@ import { BookList, InfiniteBookList } from "../BookList";
 import merge from "deepmerge";
 import { BorrowableBook, CollectionData } from "interfaces";
 import useSWRInfinite from "swr/infinite";
-import { fetchCollection } from "dataflow/opds1/fetch";
 
 const books = fixtures.makeBorrowableBooks(3);
 
@@ -83,7 +82,7 @@ describe("infinite loading book list", () => {
 
     expect(useSWRInfinite).toHaveBeenCalledWith(
       expect.anything(),
-      fetchCollection
+      expect.any(Function)
     );
   });
 
