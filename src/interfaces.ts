@@ -21,7 +21,6 @@ export type AppConfig = {
   staticLibraries?: LibrariesConfig;
   companionApp: "simplye" | "openebooks";
   showMedium: boolean;
-  gtmId: string | null;
   bugsnagApiKey: string | null;
   openebooks: OpenEbooksConfig | null;
 };
@@ -202,14 +201,17 @@ export type Book<Status = EmptyObject> = Readonly<
       available: number;
     } | null;
     url: string;
-    publisher?: string;
-    published?: string;
+    format?: BookFormat;
+    audience?: string;
     categories?: string[];
-    providerName?: string;
     language?: string;
+    narrators?: string[];
+    duration?: string;
+    published?: string;
+    publisher?: string;
+    providerName?: string;
     relatedUrl: string | null;
     raw?: any;
-    format?: BookFormat;
     trackOpenBookUrl: string | null;
   }
 >;

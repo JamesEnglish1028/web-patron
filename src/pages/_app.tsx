@@ -8,7 +8,6 @@ import AppConfigContext from "components/context/AppConfigContext";
 import { initBugsnag } from "analytics/bugsnag";
 import { setMediaSupportConfig } from "utils/fulfill";
 import { setFetchMediaSupportConfig } from "dataflow/opds1/fetch";
-import { GTMScript, GTMNoscript } from "analytics/GoogleTagManager";
 import type { AppConfig } from "interfaces";
 import FALLBACK_APP_CONFIG from "config/fallbackAppConfig";
 
@@ -46,10 +45,6 @@ const MyApp = (props: AppProps) => {
 
   return (
     <AppConfigContext.Provider value={appConfig}>
-      <GTMScript gtmId={appConfig.gtmId} />
-      {/* Note: GTM recommends placing this immediately after <body>, but _document.tsx
-          has no access to runtime config. It still appears in SSR HTML and functions correctly. */}
-      <GTMNoscript gtmId={appConfig.gtmId} />
       <ErrorBoundary>
         <BreadcrumbProvider>
           <Component {...pageProps} />
