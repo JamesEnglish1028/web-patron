@@ -29,7 +29,7 @@ const SSRF_BLOCKED_HOSTNAME_PATTERNS: RegExp[] = [
   /^fc00:/i, // IPv6 ULA
   /^fd[0-9a-f]{2}:/i, // IPv6 ULA
   /\.local$/i, // mDNS / local network
-  /\.internal$/i, // cloud-internal DNS
+  /\.internal$/i // cloud-internal DNS
 ];
 
 const isSsrfTarget = (hostname: string): boolean =>

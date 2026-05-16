@@ -24,13 +24,13 @@ const Recommendations: React.FC<{ book: AnyBook }> = ({ book }) => {
 
   // don't show if there are no lanes
   if (!isLoading && lanes.length === 0) return null;
-  // also don't show if the lanes are empty or only contain 1
-  // book. That 1 book is usually the book we are looking at.
-  const hasBooks = lanes.reduce(
-    (prev, lane) => (lane.books.length > 1 ? true : prev),
-    false
+  // don't show if every lane only contains the current book or no books.
+  // `Lane` also applies this omit filter at render time, so this gate must
+  // account for the same logic to avoid hiding valid single-book lanes.
+  const hasVisibleBooks = lanes.some(lane =>
+    lane.books.some(laneBook => laneBook.id !== book.id)
   );
-  if (!isLoading && !hasBooks) return null;
+  if (!isLoading && !hasVisibleBooks) return null;
 
   return (
     <section sx={{ bg: "ui.gray.lightWarm", py: 4 }}>

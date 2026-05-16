@@ -54,7 +54,7 @@ describe("fetching catalog", () => {
     const promise = fetchFeed("not a valid url");
     await expect(promise).rejects.toThrow(Error);
     await expect(promise).rejects.toThrowErrorMatchingInlineSnapshot(
-      `"Fetch Error: The fetch promise for the requested resource was rejected. This is probably an offline, CORS, or other network error. Requested URL: not a valid url"`
+      `"OPDS Error: Could not parse fetch response into an OPDS Feed or Entry"`
     );
   });
 });
@@ -131,6 +131,8 @@ describe("fetchAuthDocument", () => {
     const mockResponse = {
       ok: false,
       status: 403,
+      headers: { get: jest.fn().mockReturnValue(null) },
+      text: jest.fn().mockResolvedValue("Forbidden"),
       json: jest.fn().mockResolvedValue({ error: "Forbidden" })
     };
 

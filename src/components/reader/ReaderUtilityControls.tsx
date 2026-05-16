@@ -2,7 +2,7 @@ import * as React from "react";
 import Stack from "components/Stack";
 import Button from "components/Button";
 import List from "icons/List";
-import Settings from "icons/Settings";
+import Aa from "icons/Aa";
 import Search from "icons/Search";
 import Bookmark from "icons/Bookmark";
 import BookmarkFilled from "icons/BookmarkFilled";
@@ -75,7 +75,7 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
     {
       key: "display",
       ariaLabel: "Display Settings",
-      icon: Settings,
+      icon: Aa,
       onClick: onToggleTheme,
       disabled: disableTheme || !onToggleTheme,
       active: displayActive,
@@ -88,8 +88,20 @@ const ReaderUtilityControls: React.FC<ReaderUtilityControlsProps> = ({
       {controls.map(control => (
         <Button
           key={control.key}
-          variant={control.active ? "filled" : "ghost"}
-          color={control.active ? "brand.primary" : buttonColor}
+          variant={
+            control.key === "bookmark"
+              ? "ghost"
+              : control.active
+                ? "filled"
+                : "ghost"
+          }
+          color={
+            control.key === "bookmark"
+              ? buttonColor
+              : control.active
+                ? "brand.primary"
+                : buttonColor
+          }
           iconLeft={control.icon}
           onClick={control.onClick}
           disabled={control.disabled}

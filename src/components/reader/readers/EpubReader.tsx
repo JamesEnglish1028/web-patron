@@ -1,5 +1,9 @@
-/* eslint-disable prettier/prettier */
 /* eslint-disable react-hooks/exhaustive-deps */
+// react-hooks/exhaustive-deps is suppressed globally because the main EPUB
+// load effect intentionally omits display-preference deps (fontSize, theme,
+// fontFamily, pageView) to avoid reloading the whole book when the reader
+// changes a display setting.  Those preferences are synced to the live
+// rendition by their own dedicated effects below.
 import * as React from "react";
 import { Box, type ThemeUIStyleObject } from "theme-ui";
 import { Text } from "components/Text";
@@ -8,124 +12,56 @@ import ChevronLeft from "icons/ChevronLeft";
 import ChevronRight from "icons/ChevronRight";
 import Info from "icons/Info";
 import Trash from "icons/Trash";
-import Copy from "icons/Copy";
 import Stack from "components/Stack";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
+import AnnotationPanel from "../AnnotationPanel";
+import ReaderNavigationPanel from "../ReaderNavigationPanel";
 import { useReaderInfo } from "../ReaderWrapper";
 import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { performBookSearch } from "utils/readerSearch";
 import {
-  type ReaderBookmark,
-  type ReaderCitation,
   loadBookmarks,
   saveBookmarks,
   loadCitations,
-  saveCitations,
-  createId
+  saveCitations
 } from "utils/readerAnnotations";
-
-type InputBoxProps =
-  | ({ as: "input" } & React.InputHTMLAttributes<HTMLInputElement> & { sx?: ThemeUIStyleObject })
-  | ({ as: "textarea" } & React.TextareaHTMLAttributes<HTMLTextAreaElement> & { sx?: ThemeUIStyleObject });
+import { downloadAnnotationAsRis } from "utils/ris";
+import { useAnnotationSync } from "hooks/useAnnotationSync";
+import { useEpubAnnotations } from "hooks/useEpubAnnotations";
+import {
+  type EpubReaderProps,
+  type EpubSpineItem,
+  type EpubTocItem,
+  type EpubSearchResult,
+  type EpubRelocation,
+  type EpubContentsLike,
+  type EpubRenditionLike,
+  type EpubBookLike,
+  type InputBoxProps
+} from "./EpubReader.types";
 
 const InputBox = Box as unknown as React.FC<InputBoxProps>;
 
-type EpubReaderProps = {
-  url: string;
-  authToken?: string;
-  title?: string;
-  setLoading: (value: boolean) => void;
-};
-
-type EpubSpineItem = {
-  href?: string;
-  cfiBase?: string;
-};
-
-type EpubTocItem = {
-  id?: string;
-  label?: string;
-  title?: string;
-  href?: string;
-  cfi?: string;
-  subitems?: EpubTocItem[];
-  pageNumber?: number;
-  locationIndex?: number;
-};
-
-type EpubSearchResult = {
-  cfi?: string;
-  excerpt?: string;
-  text?: string;
-};
-
-type EpubRelocation = {
-  start?: {
-    cfi?: string;
-    href?: string;
-    displayed?: {
-      page?: number;
-      total?: number;
-    };
-  };
-};
-
-type EpubThemesApi = {
-  select?: (theme: "light" | "dark") => void;
-  register?: (themeName: string, rules: Record<string, unknown>) => void;
-  fontSize?: (size: string) => void;
-  font?: (fontFamily: string) => void;
-};
-
-type EpubRenditionLike = {
-  themes?: EpubThemesApi;
-  views?: () => Array<{ document?: Document }>;
-  on?: (event: "relocated", callback: (location: EpubRelocation) => void) => void;
-  display: (target?: string) => Promise<unknown> | unknown;
-  prev?: () => void;
-  next?: () => void;
-  spread?: (mode: "auto" | "none") => void;
-  destroy?: () => void;
-};
-
-type EpubBookLike = {
-  locations?: {
-    generate?: (chars?: number) => Promise<unknown> | unknown;
-    locationFromCfi?: (cfi: string) => unknown;
-    percentageFromCfi?: (cfi: string) => number | undefined;
-    length?: () => number;
-  };
-  spine?: {
-    spineItems?: EpubSpineItem[];
-  };
-  navigation?: {
-    toc?: EpubTocItem[];
-  };
-  loaded?: {
-    metadata?: Promise<Record<string, unknown>>;
-    navigation?: Promise<{ toc?: EpubTocItem[] }>;
-  };
-  renderTo?: (
-    element: Element,
-    options: {
-      width: string;
-      height: string;
-      flow: string;
-      spread: "auto" | "none";
-    }
-  ) => EpubRenditionLike;
-  coverUrl?: () => Promise<string> | string;
-  destroy?: () => void;
-};
+// --- EpubReader ---
 
 const EpubReader: React.FC<EpubReaderProps> = ({
   url,
   authToken,
   title,
+  bookUrl,
   setLoading
 }) => {
+  const bookId = bookUrl ?? url;
+  const annotationSync = useAnnotationSync({
+    bookKey: url,
+    bookId,
+    mediaType: "epub"
+  });
+  // Refs hold mutable values that must survive re-renders without causing them.
+  // bookRef and renditionRef are the live epubjs objects; tocRef is a
+  // synchronous mirror of tocItems state used inside async callbacks.
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const bookRef = React.useRef<EpubBookLike | null>(null);
   const renditionRef = React.useRef<EpubRenditionLike | null>(null);
@@ -134,36 +70,86 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   const [error, setError] = React.useState<string | null>(null);
   const [progressLabel, setProgressLabel] = React.useState("");
   const [metadataTitle, setMetadataTitle] = React.useState("");
+  const [metadataAuthor, setMetadataAuthor] = React.useState("");
+  const [metadataPublisher, setMetadataPublisher] = React.useState("");
   const [fontSize, setFontSize] = React.useState(100);
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
   const [fontFamily, setFontFamily] = React.useState("publisher");
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
   const [tocItems, setTocItems] = React.useState<EpubTocItem[]>([]);
   const [showToc, setShowToc] = React.useState(false);
-  const [tocTab, setTocTab] = React.useState<"toc" | "bookmarks" | "annotations">("toc");
+  const [tocTab, setTocTab] = React.useState<
+    "toc" | "bookmarks" | "annotations"
+  >("toc");
   const [showSearch, setShowSearch] = React.useState(false);
   const [showDisplay, setShowDisplay] = React.useState(false);
   const [currentChapter, setCurrentChapter] = React.useState("");
   const [currentCfi, setCurrentCfi] = React.useState("");
   const [currentHref, setCurrentHref] = React.useState("");
   const [currentPageLabel, setCurrentPageLabel] = React.useState("");
-  const [bookmarks, setBookmarks] = React.useState<ReaderBookmark[]>([]);
-  const [citations, setCitations] = React.useState<ReaderCitation[]>([]);
-  const [citationDraft, setCitationDraft] = React.useState("");
-  const [editingCitationId, setEditingCitationId] = React.useState<string | null>(null);
-  const [editingCitationDraft, setEditingCitationDraft] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>([]);
+
+  // Annotation management via hook
+  const {
+    bookmarks,
+    setBookmarks,
+    setCitations,
+    citationDraft,
+    setCitationDraft,
+    editingCitationId,
+    setEditingCitationId,
+    editingCitationDraft,
+    setEditingCitationDraft,
+    pendingCitationText,
+    setPendingCitationText,
+    sortedBookmarks,
+    sortedCitations,
+    bookmarkActive,
+    addBookmark,
+    removeBookmark,
+    addCitation,
+    removeCitation,
+    beginCitationEdit,
+    cancelCitationEdit,
+    saveCitationEdit,
+    copyCitation
+  } = useEpubAnnotations(
+    url,
+    currentCfi,
+    currentChapter,
+    currentPageLabel,
+    bookRef,
+    metadataTitle,
+    title,
+    annotationSync
+  );
+  const [searchResults, setSearchResults] = React.useState<EpubSearchResult[]>(
+    []
+  );
   const [isSearching, setIsSearching] = React.useState(false);
+  const [selectionPopup, setSelectionPopup] = React.useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const searchInProgressRef = React.useRef(false);
   const displayPanelRef = React.useRef<HTMLDivElement | null>(null);
-  const displayButtonRef = React.useRef<HTMLButtonElement>(null as unknown as HTMLButtonElement);
-  const tocButtonRef = React.useRef<HTMLButtonElement>(null as unknown as HTMLButtonElement);
-  const searchButtonRef = React.useRef<HTMLButtonElement>(null as unknown as HTMLButtonElement);
+  const displayButtonRef = React.useRef<HTMLButtonElement>(
+    null as unknown as HTMLButtonElement
+  );
+  const tocButtonRef = React.useRef<HTMLButtonElement>(
+    null as unknown as HTMLButtonElement
+  );
+  const searchButtonRef = React.useRef<HTMLButtonElement>(
+    null as unknown as HTMLButtonElement
+  );
 
   const readerInfo = useReaderInfo();
 
+  // Wrapped in useCallback with an empty dep array because it is passed into
+  // the load effect's dep array — a stable reference prevents that effect
+  // from re-running every render.
   const applyTheme = React.useCallback((next: "light" | "dark") => {
     const rendition = renditionRef.current;
     rendition?.themes?.select?.(next);
@@ -183,9 +169,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
 
     try {
       const root = document.documentElement;
-      root.style.setProperty("--reader-chrome-bg", next === "dark" ? "#0b1220" : "#ffffff");
-      root.style.setProperty("--reader-chrome-text", next === "dark" ? "#e2e8f0" : "#0f172a");
-      root.style.setProperty("--reader-chrome-border", next === "dark" ? "#1f2937" : "#e2e8f0");
+      root.style.setProperty(
+        "--reader-chrome-bg",
+        next === "dark" ? "#0b1220" : "#ffffff"
+      );
+      root.style.setProperty(
+        "--reader-chrome-text",
+        next === "dark" ? "#e2e8f0" : "#0f172a"
+      );
+      root.style.setProperty(
+        "--reader-chrome-border",
+        next === "dark" ? "#1f2937" : "#e2e8f0"
+      );
     } catch {
       // ignore css variable errors
     }
@@ -195,6 +190,10 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     tocRef.current = tocItems;
   }, [tocItems]);
 
+  // --- Load EPUB ---
+  // The `active` flag prevents state updates after the component unmounts or
+  // before a new load cycle begins.  The cleanup function flips it to false,
+  // turning any in-flight awaits into no-ops.
   React.useEffect(() => {
     let active = true;
 
@@ -207,12 +206,14 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         const fetchUrl = isLocalCm ? proxied : getProxiedUrl(url);
         const fetchHeaders: Record<string, string> = {};
         if (authToken) {
-          fetchHeaders[isLocalCm ? "Authorization" : "X-Reader-Authorization"] = authToken;
+          fetchHeaders[isLocalCm ? "Authorization" : "X-Reader-Authorization"] =
+            authToken;
         }
         const response = await fetch(fetchUrl, {
           headers: Object.keys(fetchHeaders).length ? fetchHeaders : undefined
         });
-        if (!response.ok) throw new Error(`Failed to load EPUB (${response.status})`);
+        if (!response.ok)
+          throw new Error(`Failed to load EPUB (${response.status})`);
 
         const contentType = response.headers.get("content-type") || "";
         if (
@@ -267,11 +268,16 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             } catch {
               // ignore storage failures
             }
+            // Sync last position to annotation service (fire-and-forget)
+            annotationSync.syncLastPosition({ cfi });
           }
 
           if (href) {
             setCurrentHref(href);
-            const label = findTocLabel(bookRef.current?.navigation?.toc || tocRef.current, href);
+            const label = findTocLabel(
+              bookRef.current?.navigation?.toc || tocRef.current,
+              href
+            );
             if (label) setCurrentChapter(label);
           }
 
@@ -303,9 +309,66 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           }
         });
 
+        // Suppress EPUB 3 print page-break markers (epub:type="pagebreak").
+        // These are aria-hidden <span>/<a> elements that mark print page
+        // boundaries; without CSS they render as visible inline links.
+        // hooks.content fires for every page render and receives the view;
+        // contents is at view.contents — addStylesheetCss() injects CSS.
+        const PAGE_BREAK_CSS =
+          `[epub\\:type~="pagebreak"],[role="doc-pagebreak"],` +
+          `span.pagebreak,a.pagebreak,span.page-break,a.page-break,` +
+          `[aria-hidden="true"][class~="page"],[aria-hidden="true"][id^="pg"]` +
+          `{display:none!important}`;
+        rendition.hooks?.content?.register?.((contents: EpubContentsLike) => {
+          try {
+            contents.addStylesheetCss?.(
+              PAGE_BREAK_CSS,
+              "__epub-hide-pagebreaks__"
+            );
+          } catch {
+            // ignore injection errors
+          }
+        });
+
+        // epubjs fires "selected" with the contents object of the iframe that
+        // renders the EPUB page.  We offset the in-iframe selection rect by the
+        // iframe's bounding rect so the popup appears in host-document space.
+        rendition.on?.(
+          "selected",
+          (_cfiRange: string, contents: EpubContentsLike) => {
+            if (!active) return;
+            try {
+              const selection = contents?.window?.getSelection?.();
+              if (!selection || selection.isCollapsed) return;
+              const text = selection.toString().trim();
+              if (!text) return;
+              const iframeEl = containerRef.current?.querySelector("iframe");
+              const iframeRect = iframeEl?.getBoundingClientRect() ?? null;
+              const range = selection.getRangeAt(0);
+              const selRect = range.getBoundingClientRect();
+              const x =
+                (iframeRect?.left ?? 0) + selRect.left + selRect.width / 2;
+              const y = (iframeRect?.top ?? 0) + selRect.top;
+              setSelectionPopup({ text, x, y });
+            } catch {
+              // ignore selection positioning errors
+            }
+          }
+        );
+
         const metadata = (await book.loaded?.metadata) || {};
-        const titleFromBook = normalize(metadata?.title || metadata?.["dc:title"] || "");
+        const titleFromBook = normalize(
+          metadata?.title || metadata?.["dc:title"] || ""
+        );
+        const authorFromBook = normalize(
+          metadata?.creator || metadata?.["dc:creator"]
+        );
+        const publisherFromBook = normalize(
+          metadata?.publisher || metadata?.["dc:publisher"]
+        );
         if (titleFromBook) setMetadataTitle(titleFromBook);
+        if (authorFromBook) setMetadataAuthor(authorFromBook);
+        if (publisherFromBook) setMetadataPublisher(publisherFromBook);
         let coverUrl = "";
         try {
           const cover = await book.coverUrl?.();
@@ -317,12 +380,20 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           readerInfo.setBookInfo({
             title: titleFromBook || title || "",
             author: normalize(metadata?.creator || metadata?.["dc:creator"]),
-            publisher: normalize(metadata?.publisher || metadata?.["dc:publisher"]),
+            publisher: normalize(
+              metadata?.publisher || metadata?.["dc:publisher"]
+            ),
             published: normalize(metadata?.["dc:date"]),
-            identifier: normalize(metadata?.identifier || metadata?.["dc:identifier"]),
+            identifier: normalize(
+              metadata?.identifier || metadata?.["dc:identifier"]
+            ),
             rights: normalize(metadata?.rights || metadata?.["dc:rights"]),
-            description: normalize(metadata?.description || metadata?.["dc:description"]),
-            language: normalize(metadata?.language || metadata?.["dc:language"]),
+            description: normalize(
+              metadata?.description || metadata?.["dc:description"]
+            ),
+            language: normalize(
+              metadata?.language || metadata?.["dc:language"]
+            ),
             subjects: normalize(metadata?.["dc:subject"]),
             coverUrl
           });
@@ -368,6 +439,9 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     };
   }, [url, authToken, title, setLoading, applyTheme]);
 
+  // --- Sync display settings to the active rendition ---
+  // Each effect below responds to a single display preference change and
+  // pushes it into the live epubjs rendition without reloading the book.
   React.useEffect(() => {
     renditionRef.current?.themes?.fontSize?.(`${fontSize}%`);
   }, [fontSize]);
@@ -413,15 +487,65 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     setCitationDraft("");
     setEditingCitationId(null);
     setEditingCitationDraft("");
+    setSelectionPopup(null);
+    setPendingCitationText(null);
     try {
-      setBookmarks(loadBookmarks(url));
-      setCitations(loadCitations(url));
+      // mergedBookmarks/mergedCitations are populated asynchronously by
+      // useAnnotationSync once the server fetch completes. Fall back to local
+      // storage here so the reader has data immediately on render.
+      setBookmarks(annotationSync.mergedBookmarks ?? loadBookmarks(url));
+      setCitations(annotationSync.mergedCitations ?? loadCitations(url));
     } catch {
       setBookmarks([]);
       setCitations([]);
     }
   }, [url]);
 
+  // When the server merge completes (async after mount), update displayed
+  // bookmarks and citations if the server returned additional items.
+  React.useEffect(() => {
+    if (annotationSync.mergedBookmarks !== null) {
+      setBookmarks(prev => {
+        // Only update if the merged list is actually different (more items)
+        if (prev.length >= annotationSync.mergedBookmarks!.length) return prev;
+        saveBookmarks(url, annotationSync.mergedBookmarks!);
+        return annotationSync.mergedBookmarks!;
+      });
+    }
+  }, [annotationSync.mergedBookmarks, url]);
+
+  React.useEffect(() => {
+    if (annotationSync.mergedCitations !== null) {
+      setCitations(prev => {
+        if (prev.length >= annotationSync.mergedCitations!.length) return prev;
+        saveCitations(url, annotationSync.mergedCitations!);
+        return annotationSync.mergedCitations!;
+      });
+    }
+  }, [annotationSync.mergedCitations, url]);
+
+  // Flush last position to the server when the tab becomes hidden or the page
+  // is about to unload. This ensures the server always holds the most recent
+  // position even if the patron closes the tab without turning the page.
+  React.useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState !== "hidden") return;
+      const cfi = currentCfi;
+      if (cfi) annotationSync.flushLastPosition({ cfi });
+    };
+    const onPageHide = () => {
+      const cfi = currentCfi;
+      if (cfi) annotationSync.flushLastPosition({ cfi });
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [currentCfi, annotationSync.flushLastPosition]);
+
+  // Arrow keys page through the book unless focus is inside a text input.
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -447,11 +571,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
   }, []);
 
   const runSearch = async () => {
-    if (!searchQuery.trim() || !bookRef.current || searchInProgressRef.current) return;
+    if (!searchQuery.trim() || !bookRef.current || searchInProgressRef.current)
+      return;
     searchInProgressRef.current = true;
     setIsSearching(true);
     try {
-      const results = await performBookSearch(bookRef.current, searchQuery.trim());
+      const results = await performBookSearch(
+        bookRef.current,
+        searchQuery.trim()
+      );
       setSearchResults(results || []);
     } catch {
       setSearchResults([]);
@@ -468,6 +596,15 @@ const EpubReader: React.FC<EpubReaderProps> = ({
     const spineItems = bookRef.current?.spine?.spineItems || [];
     const candidates = buildDisplayCandidates(target, spineItems);
 
+    // Also try CFI navigation via epubs's spine if available — some EPUBs only
+    // navigate correctly by CFI, not by href, especially for sub-section anchors.
+    const { hash } = splitHref(safeDecode(target));
+    if (hash) {
+      // Try the bare anchor id as a CFI-fragment fallback (epubjs resolves
+      // element ids to CFI internally when passed as plain strings starting with #)
+      candidates.push(hash);
+    }
+
     for (const candidate of candidates) {
       try {
         await rendition.display(candidate);
@@ -479,132 +616,14 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       }
     }
 
-    // Do not throw to the browser console; surface a user-facing error instead.
-    setError("Unable to navigate to this section. The EPUB TOC link may be malformed.");
+    // Navigation failed for all candidates — close the TOC anyway so the
+    // user isn't stuck, and do not surface an error for sub-section anchors
+    // since many EPUBs emit them even when they aren't navigable positions.
+    setShowToc(false);
+    setShowSearch(false);
   };
 
-  const addBookmark = () => {
-    if (!currentCfi) return;
-    let locationIndex: number | undefined;
-    let progressPercent: number | undefined;
-    try {
-      const locations = bookRef.current?.locations;
-      if (locations?.locationFromCfi && locations?.percentageFromCfi) {
-        const loc = locations.locationFromCfi(currentCfi);
-        if (typeof loc === "number" && Number.isFinite(loc)) {
-          locationIndex = Math.max(1, Math.round(loc));
-        }
-        const pct = locations.percentageFromCfi(currentCfi);
-        if (typeof pct === "number" && Number.isFinite(pct)) {
-          progressPercent = Math.max(0, Math.min(100, Math.round(pct * 100)));
-        }
-      }
-    } catch {
-      // ignore location metadata errors
-    }
-    const bookmark: ReaderBookmark = {
-      id: createId(),
-      cfi: currentCfi,
-      label: currentChapter || currentPageLabel || "Bookmark",
-      chapter: currentChapter || undefined,
-      pageLabel: currentPageLabel || undefined,
-      locationIndex,
-      progressPercent,
-      createdAt: Date.now()
-    };
-    const next = [bookmark, ...bookmarks.filter(entry => entry.cfi !== currentCfi)];
-    setBookmarks(next);
-    saveBookmarks(url, next);
-  };
-
-  const removeBookmark = (id: string) => {
-    const next = bookmarks.filter(entry => entry.id !== id);
-    setBookmarks(next);
-    saveBookmarks(url, next);
-  };
-
-  const addCitation = () => {
-    const note = citationDraft.trim();
-    if (!currentCfi || !note) return;
-    const citation: ReaderCitation = {
-      id: createId(),
-      cfi: currentCfi,
-      note,
-      chapter: currentChapter || undefined,
-      pageLabel: currentPageLabel || undefined,
-      createdAt: Date.now()
-    };
-    const next = [citation, ...citations];
-    setCitations(next);
-    saveCitations(url, next);
-    setCitationDraft("");
-  };
-
-  const removeCitation = (id: string) => {
-    const next = citations.filter(entry => entry.id !== id);
-    setCitations(next);
-    saveCitations(url, next);
-    if (editingCitationId === id) {
-      setEditingCitationId(null);
-      setEditingCitationDraft("");
-    }
-  };
-
-  const beginCitationEdit = (citation: ReaderCitation) => {
-    setEditingCitationId(citation.id);
-    setEditingCitationDraft(citation.note);
-  };
-
-  const cancelCitationEdit = () => {
-    setEditingCitationId(null);
-    setEditingCitationDraft("");
-  };
-
-  const saveCitationEdit = () => {
-    const note = editingCitationDraft.trim();
-    if (!editingCitationId || !note) return;
-    const next = citations.map(entry =>
-      entry.id === editingCitationId
-        ? {
-            ...entry,
-            note
-          }
-        : entry
-    );
-    setCitations(next);
-    saveCitations(url, next);
-    setEditingCitationId(null);
-    setEditingCitationDraft("");
-  };
-
-  const copyCitation = async (citation: ReaderCitation) => {
-    const page = citation.pageLabel ? ` (${citation.pageLabel})` : "";
-    const chapter = citation.chapter || "Untitled";
-    const payload = `${chapter}${page}\n${url}\n${citation.note}`;
-    try {
-      await navigator.clipboard.writeText(payload);
-    } catch {
-      // ignore clipboard errors
-    }
-  };
-
-  const sortedBookmarks = React.useMemo(
-    () =>
-      bookmarks
-        .slice()
-        .sort((a, b) => (a.locationIndex ?? Number.MAX_SAFE_INTEGER) - (b.locationIndex ?? Number.MAX_SAFE_INTEGER)),
-    [bookmarks]
-  );
-
-  const sortedCitations = React.useMemo(
-    () => citations.slice().sort((a, b) => b.createdAt - a.createdAt),
-    [citations]
-  );
-
-  const bookmarkActive = React.useMemo(
-    () => Boolean(currentCfi && bookmarks.some(entry => entry.cfi === currentCfi)),
-    [bookmarks, currentCfi]
-  );
+  // --- Header controls ---
 
   const leftControls = (
     <Stack spacing={2}>
@@ -621,6 +640,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
       />
     </Stack>
   );
+
+  const toggleBookmark = () => {
+    if (!currentCfi) return;
+
+    const existingBookmark = bookmarks.find(entry => entry.cfi === currentCfi);
+    if (existingBookmark) {
+      removeBookmark(existingBookmark.id);
+      return;
+    }
+
+    addBookmark();
+  };
 
   if (error) {
     return (
@@ -652,7 +683,7 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             onToggleToc={() => setShowToc(prev => !prev)}
             onToggleSearch={() => setShowSearch(prev => !prev)}
             onToggleTheme={() => setShowDisplay(prev => !prev)}
-            onAddBookmark={addBookmark}
+            onAddBookmark={toggleBookmark}
             bookmarkActive={bookmarkActive}
             tocActive={showToc}
             searchActive={showSearch}
@@ -664,33 +695,71 @@ const EpubReader: React.FC<EpubReaderProps> = ({
         }
       />
 
-      {showToc && (
-        <Box sx={panelStyles.right}>
-          <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-            {(
-              [
-                { key: "toc", label: "TOC" },
-                { key: "bookmarks", label: "Bookmarks" },
-                { key: "annotations", label: "Annotations" }
-              ] as const
-            ).map(tab => (
-              <Button
-                key={tab.key}
-                variant={tocTab === tab.key ? "filled" : "ghost"}
-                color="text"
-                onClick={() => setTocTab(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
+      {annotationSync.serverResumeLabel && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            px: 3,
+            py: 2,
+            bg: "ui.gray.light",
+            borderBottom: "1px solid",
+            borderColor: "ui.gray.medium"
+          }}
+        >
+          <Text variant="text.detail">
+            Continue from {annotationSync.serverResumeLabel}?
+          </Text>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <Button
+              variant="filled"
+              color="brand.primary"
+              onClick={() => {
+                const pos = annotationSync.serverLastPosition as
+                  | { cfi: string }
+                  | null
+                  | undefined;
+                if (pos?.cfi) renditionRef.current?.display(pos.cfi);
+                annotationSync.dismissServerResume();
+              }}
+            >
+              Jump there
+            </Button>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={annotationSync.dismissServerResume}
+            >
+              Stay here
+            </Button>
           </Box>
+        </Box>
+      )}
 
-          {tocTab === "toc" && (
-            <Box sx={{ overflowY: "auto", maxHeight: "60vh" }}>
+      {showToc && (
+        <ReaderNavigationPanel
+          storageKey="epub"
+          activeTab={tocTab}
+          onTabChange={setTocTab}
+          initialWidth={380}
+          minWidth={320}
+          maxWidth={760}
+          top={64}
+          right={16}
+          zIndex={6}
+          tocContent={
+            <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
               {tocItems.length ? (
                 tocItems.map((item: EpubTocItem, index: number) => (
                   <TocItem
-                    key={item?.id || item?.href || `${item?.label || item?.title}-${index}`}
+                    key={
+                      item?.id ||
+                      item?.href ||
+                      `${item?.label || item?.title}-${index}`
+                    }
                     item={item}
                     depth={0}
                     onSelect={navigateTo}
@@ -701,15 +770,38 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 <Text variant="text.detail">No table of contents found.</Text>
               )}
             </Box>
-          )}
-
-          {tocTab === "bookmarks" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Button variant="ghost" color="text" onClick={addBookmark}>
+          }
+          bookmarksContent={
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Button
+                variant="ghost"
+                color="text"
+                onClick={addBookmark}
+                sx={{ flexShrink: 0 }}
+              >
                 Bookmark current location
               </Button>
               {sortedBookmarks.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1, overflowY: "auto", maxHeight: "52vh", pr: 1 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    overflowY: "auto",
+                    flex: 1,
+                    minHeight: 0,
+                    pr: 1
+                  }}
+                >
                   {sortedBookmarks.map(bookmark => (
                     <Box
                       key={bookmark.id}
@@ -724,17 +816,36 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                         p: 2
                       }}
                     >
-                      <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                      <Box
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2
+                        }}
+                      >
                         <Button
                           variant="ghost"
                           color="text"
                           onClick={() => navigateTo(bookmark.cfi)}
-                          sx={{ justifyContent: "flex-start", px: 0, py: 0, minHeight: "unset" }}
+                          sx={{
+                            justifyContent: "flex-start",
+                            px: 0,
+                            py: 0,
+                            minHeight: "unset"
+                          }}
                         >
-                          {bookmark.chapter || bookmark.pageLabel || bookmark.label || "Bookmark"}
+                          {bookmark.chapter ||
+                            bookmark.pageLabel ||
+                            bookmark.label ||
+                            "Bookmark"}
                         </Button>
                         {typeof bookmark.progressPercent === "number" && (
-                          <Text variant="text.detail" sx={{ color: "ui.gray.dark", m: 0 }}>
+                          <Text
+                            variant="text.detail"
+                            sx={{ color: "ui.gray.dark", m: 0 }}
+                          >
                             Progression {bookmark.progressPercent}%
                           </Text>
                         )}
@@ -754,142 +865,65 @@ const EpubReader: React.FC<EpubReaderProps> = ({
                 <Text variant="text.detail">No bookmarks yet.</Text>
               )}
             </Box>
-          )}
+          }
+          annotationsContent={
+            <AnnotationPanel
+              pendingAnnotationText={pendingCitationText}
+              annotationDraft={citationDraft}
+              onAnnotationDraftChange={setCitationDraft}
+              onRemovePendingAnnotationText={() => setPendingCitationText(null)}
+              onAddAnnotation={addCitation}
+              annotations={sortedCitations.map(citation => ({
+                id: citation.id,
+                note: citation.note,
+                quotedText: citation.quotedText,
+                pageLabel: citation.pageLabel,
+                chapter: citation.chapter,
+                cfi: citation.cfi
+              }))}
+              editingAnnotationId={editingCitationId}
+              editingAnnotationDraft={editingCitationDraft}
+              onEditingAnnotationDraftChange={setEditingCitationDraft}
+              onBeginEdit={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (citation) beginCitationEdit(citation);
+              }}
+              onSaveEdit={saveCitationEdit}
+              onCancelEdit={cancelCitationEdit}
+              onDelete={removeCitation}
+              onCopy={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (citation) copyCitation(citation);
+              }}
+              onDownload={annotation => {
+                const citation = sortedCitations.find(
+                  c => c.id === annotation.id
+                );
+                if (!citation) return;
 
-          {tocTab === "annotations" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                Add a note for the current location
-              </Text>
-              <InputBox
-                as="textarea"
-                value={citationDraft}
-                onChange={e => setCitationDraft(e.target.value)}
-                placeholder="Type a note"
-                sx={{
-                  width: "100%",
-                  minHeight: 84,
-                  border: "1px solid",
-                  borderColor: "var(--reader-chrome-border, #e2e8f0)",
-                  borderRadius: 8,
-                  p: 2,
-                  background: "transparent",
-                  color: "var(--reader-chrome-text, inherit)"
-                }}
-              />
-              <Box>
-                <Button variant="ghost" color="text" onClick={addCitation}>
-                  Save note
-                </Button>
-              </Box>
-
-              {sortedCitations.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {sortedCitations.map(citation => (
-                    <Box
-                      key={citation.id}
-                      sx={{
-                        border: "1px solid",
-                        borderColor: "var(--reader-chrome-border, #e2e8f0)",
-                        borderRadius: 8,
-                        p: 2
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 2,
-                          mb: 1
-                        }}
-                      >
-                        <Button
-                          variant="ghost"
-                          color="text"
-                          onClick={() => navigateTo(citation.cfi)}
-                        >
-                          {citation.chapter || citation.pageLabel || "Annotation"}
-                        </Button>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            onClick={() => beginCitationEdit(citation)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Trash}
-                            onClick={() => removeCitation(citation.id)}
-                          >
-                            Remove
-                          </Button>
-                        </Box>
-                      </Box>
-                      {editingCitationId === citation.id ? (
-                        <>
-                          <InputBox
-                            as="textarea"
-                            value={editingCitationDraft}
-                            onChange={e => setEditingCitationDraft(e.target.value)}
-                            sx={{
-                              width: "100%",
-                              minHeight: 84,
-                              border: "1px solid",
-                              borderColor: "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2,
-                              mb: 2,
-                              background: "transparent",
-                              color: "var(--reader-chrome-text, inherit)"
-                            }}
-                          />
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              onClick={saveCitationEdit}
-                              disabled={!editingCitationDraft.trim()}
-                            >
-                              Save
-                            </Button>
-                            <Button variant="ghost" color="text" onClick={cancelCitationEdit}>
-                              Cancel
-                            </Button>
-                          </Box>
-                        </>
-                      ) : (
-                        <>
-                          <Text variant="text.detail" sx={{ mb: 2 }}>
-                            {citation.note}
-                          </Text>
-                          {citation.pageLabel && (
-                            <Text variant="text.detail" sx={{ color: "ui.gray.dark", mb: 2 }}>
-                              {citation.pageLabel}
-                            </Text>
-                          )}
-                          <Button
-                            variant="ghost"
-                            color="text"
-                            iconLeft={Copy}
-                            onClick={() => copyCitation(citation)}
-                          >
-                            Copy
-                          </Button>
-                        </>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Text variant="text.detail">No annotations yet.</Text>
-              )}
-            </Box>
-          )}
-        </Box>
+                downloadAnnotationAsRis(citation, {
+                  title: metadataTitle || title,
+                  author: metadataAuthor,
+                  publisher: metadataPublisher,
+                  url: bookUrl || url,
+                  referenceType: "EBOOK"
+                });
+              }}
+              onNavigate={annotation => {
+                if (annotation.cfi) navigateTo(annotation.cfi);
+              }}
+              saveButtonLabel="Save note"
+              draftPlaceholder="Type a note"
+              citationBookTitle={metadataTitle || title}
+              citationAuthor={metadataAuthor}
+              citationPublisher={metadataPublisher}
+            />
+          }
+        />
       )}
 
       {showSearch && (
@@ -905,28 +939,38 @@ const EpubReader: React.FC<EpubReaderProps> = ({
               placeholder="Search in book"
               sx={inputStyles}
             />
-            <Button variant="ghost" color="text" onClick={runSearch} disabled={isSearching}>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={runSearch}
+              disabled={isSearching}
+            >
               {isSearching ? "Searching..." : "Search"}
             </Button>
           </Stack>
           <Box sx={{ overflowY: "auto", maxHeight: "50vh" }}>
             {searchResults.length ? (
               <Stack direction="column" spacing={2}>
-                {searchResults.map((result: EpubSearchResult, index: number) => (
-                  <Box
-                    key={`${result?.cfi || "result"}-${index}`}
-                    sx={resultCardStyles}
+                {searchResults.map(
+                  (result: EpubSearchResult, index: number) => (
+                    <Box
+                      key={`${result?.cfi || "result"}-${index}`}
+                      sx={resultCardStyles}
                       onClick={() => {
                         if (result.cfi) {
                           navigateTo(result.cfi);
                         }
                       }}
-                  >
-                    <Text variant="text.body.regular" sx={{ fontWeight: 600 }}>
-                      {result?.excerpt || result?.text || "Search result"}
-                    </Text>
-                  </Box>
-                ))}
+                    >
+                      <Text
+                        variant="text.body.regular"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        {result?.excerpt || result?.text || "Search result"}
+                      </Text>
+                    </Box>
+                  )
+                )}
               </Stack>
             ) : (
               <Text variant="text.detail">No results.</Text>
@@ -944,10 +988,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             Font size
           </Text>
           <Stack spacing={2} sx={{ mb: 2 }}>
-            <Button variant="ghost" color="text" onClick={() => setFontSize(prev => Math.max(70, prev - 10))}>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={() => setFontSize(prev => Math.max(70, prev - 10))}
+            >
               A-
             </Button>
-            <Button variant="ghost" color="text" onClick={() => setFontSize(prev => Math.min(200, prev + 10))}>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={() => setFontSize(prev => Math.min(200, prev + 10))}
+            >
               A+
             </Button>
           </Stack>
@@ -955,10 +1007,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             Theme
           </Text>
           <Stack spacing={2} sx={{ mb: 2 }}>
-            <Button variant={theme === "light" ? "filled" : "ghost"} color="text" onClick={() => setTheme("light")}>
+            <Button
+              variant={theme === "light" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setTheme("light")}
+            >
               Light
             </Button>
-            <Button variant={theme === "dark" ? "filled" : "ghost"} color="text" onClick={() => setTheme("dark")}>
+            <Button
+              variant={theme === "dark" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setTheme("dark")}
+            >
               Dark
             </Button>
           </Stack>
@@ -966,13 +1026,25 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             Font
           </Text>
           <Stack spacing={2} sx={{ mb: 2 }}>
-            <Button variant={fontFamily === "publisher" ? "filled" : "ghost"} color="text" onClick={() => setFontFamily("publisher")}>
+            <Button
+              variant={fontFamily === "publisher" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setFontFamily("publisher")}
+            >
               Publisher
             </Button>
-            <Button variant={fontFamily === "system" ? "filled" : "ghost"} color="text" onClick={() => setFontFamily("system")}>
+            <Button
+              variant={fontFamily === "system" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setFontFamily("system")}
+            >
               System
             </Button>
-            <Button variant={fontFamily === "sans" ? "filled" : "ghost"} color="text" onClick={() => setFontFamily("sans")}>
+            <Button
+              variant={fontFamily === "sans" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setFontFamily("sans")}
+            >
               Sans
             </Button>
           </Stack>
@@ -980,10 +1052,18 @@ const EpubReader: React.FC<EpubReaderProps> = ({
             Layout
           </Text>
           <Stack spacing={2}>
-            <Button variant={pageView === "single" ? "filled" : "ghost"} color="text" onClick={() => setPageView("single")}>
+            <Button
+              variant={pageView === "single" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setPageView("single")}
+            >
               Single
             </Button>
-            <Button variant={pageView === "spread" ? "filled" : "ghost"} color="text" onClick={() => setPageView("spread")}>
+            <Button
+              variant={pageView === "spread" ? "filled" : "ghost"}
+              color="text"
+              onClick={() => setPageView("spread")}
+            >
               Spread
             </Button>
           </Stack>
@@ -1045,11 +1125,98 @@ const EpubReader: React.FC<EpubReaderProps> = ({
           {progressLabel || " "}
         </Text>
       </Box>
+      {selectionPopup && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: selectionPopup.x,
+            top: selectionPopup.y - 52,
+            zIndex: 1000,
+            background: "var(--reader-chrome-bg, #ffffff)",
+            color: "var(--reader-chrome-text, #0f172a)",
+            border: "1px solid",
+            borderColor: "var(--reader-chrome-border, #e2e8f0)",
+            borderRadius: 8,
+            px: 1,
+            py: "4px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            display: "flex",
+            alignItems: "center",
+            transform: "translateX(-50%)",
+            pointerEvents: "all"
+          }}
+        >
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => {
+              setPendingCitationText(selectionPopup.text);
+              setCitationDraft("");
+              setShowToc(true);
+              setTocTab("annotations");
+              setShowSearch(false);
+              setShowDisplay(false);
+              setSelectionPopup(null);
+              // Clear the iframe selection
+              try {
+                const iframeEl = containerRef.current?.querySelector("iframe");
+                const iframeWin = (iframeEl as HTMLIFrameElement | null)
+                  ?.contentWindow;
+                iframeWin?.getSelection?.()?.removeAllRanges?.();
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            Create Citation
+          </Button>
+          <Box
+            sx={{
+              width: "1px",
+              alignSelf: "stretch",
+              background: "var(--reader-chrome-border, #e2e8f0)"
+            }}
+          />
+          <Button
+            variant="ghost"
+            color="text"
+            sx={{
+              color: "var(--reader-chrome-text, #0f172a)",
+              minHeight: "unset",
+              py: "4px",
+              px: 2,
+              fontSize: 1
+            }}
+            onClick={() => setSelectionPopup(null)}
+          >
+            ✕
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 };
 
 export default EpubReader;
+
+// Returns the identifier only if it is a usable HTTP(S) URI.
+// URNs, UUIDs, and plain numbers are not meaningful citation links
+// and return undefined so callers fall back to bookUrl or the fulfillment URL.
+const _formatIdentifierAsLink = (
+  id: string | undefined
+): string | undefined => {
+  if (!id) return undefined;
+  const s = id.trim();
+  if (s.startsWith("https://") || s.startsWith("http://")) return s;
+  return undefined;
+};
 
 const resolveFontFamily = (choice: string) => {
   switch (choice) {
@@ -1067,7 +1234,10 @@ const resolveFontFamily = (choice: string) => {
 const normalize = (value: unknown): string => {
   if (value == null) return "";
   if (Array.isArray(value)) {
-    return value.map(item => String(item ?? "")).filter(Boolean).join(", ");
+    return value
+      .map(item => String(item ?? ""))
+      .filter(Boolean)
+      .join(", ");
   }
   return String(value);
 };
@@ -1091,43 +1261,74 @@ const splitHref = (value: string) => {
   return { path: value.slice(0, idx), hash: value.slice(idx) };
 };
 
-const pushCandidate = (set: Set<string>, value?: string) => {
-  if (!value) return;
-  const trimmed = value.trim();
-  if (trimmed) set.add(trimmed);
-};
-
+// buildDisplayCandidates generates a prioritised list of targets to pass to
+// rendition.display().  epubjs accepts CFIs, bare filenames, relative paths,
+// and full hrefs — we generate all variants so TOC links that use different
+// path formats still resolve without errors surfacing to the user.
 const buildDisplayCandidates = (
   target: string,
   spineItems: EpubSpineItem[] = []
 ) => {
-  const set = new Set<string>();
+  // We collect two ordered lists: hash-bearing variants (which preserve the
+  // anchor so epubjs scrolls to the right element) and path-only fallbacks.
+  // Hash-bearing candidates must be tried first — if a path-only variant
+  // succeeds first, epubjs sees target === section.href and silently drops the
+  // anchor, leaving the reader at the top of the section instead of the
+  // subsection heading.
+  const withHash: string[] = [];
+  const noHash: string[] = [];
+
+  const seen = new Set<string>();
+  const pushWith = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      withHash.push(trimmed);
+    }
+  };
+  const pushNo = (value?: string) => {
+    if (!value) return;
+    const trimmed = value.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      noHash.push(trimmed);
+    }
+  };
+
   const raw = target.trim();
   const decoded = safeDecode(raw);
 
   [raw, decoded].forEach(source => {
-    pushCandidate(set, source);
     const { path, hash } = splitHref(source);
     if (!path) return;
 
     const cleaned = cleanPath(path);
     const basename = cleaned.split("/").pop() || "";
 
-    pushCandidate(set, path);
-    pushCandidate(set, cleaned);
-    pushCandidate(set, `${cleaned}${hash}`);
-    pushCandidate(set, basename);
-    pushCandidate(set, `${basename}${hash}`);
+    // Prefer hash-bearing forms first so the anchor is preserved.
+    if (hash) {
+      pushWith(source);
+      pushWith(`${cleaned}${hash}`);
+      pushWith(`${basename}${hash}`);
+    }
+
+    // Path-only fallbacks (navigate to section start, no anchor).
+    pushNo(source.split("#")[0]);
+    pushNo(cleaned);
+    pushNo(basename);
 
     try {
       const parsed = new URL(source);
       const parsedPath = cleanPath(parsed.pathname);
       const parsedHash = parsed.hash || hash;
       const parsedBase = parsedPath.split("/").pop() || "";
-      pushCandidate(set, parsedPath);
-      pushCandidate(set, `${parsedPath}${parsedHash}`);
-      pushCandidate(set, parsedBase);
-      pushCandidate(set, `${parsedBase}${parsedHash}`);
+      if (parsedHash) {
+        pushWith(`${parsedPath}${parsedHash}`);
+        pushWith(`${parsedBase}${parsedHash}`);
+      }
+      pushNo(parsedPath);
+      pushNo(parsedBase);
     } catch {
       // not an absolute URL
     }
@@ -1138,16 +1339,22 @@ const buildDisplayCandidates = (
       const spineClean = cleanPath(spineHref);
       const spineBase = spineClean.split("/").pop() || "";
 
-      if (spineClean === cleaned || spineBase === basename || cleaned.endsWith(spineClean)) {
-        pushCandidate(set, spineHref);
-        pushCandidate(set, spineClean);
-        pushCandidate(set, `${spineHref}${hash}`);
-        pushCandidate(set, `${spineClean}${hash}`);
+      if (
+        spineClean === cleaned ||
+        spineBase === basename ||
+        cleaned.endsWith(spineClean)
+      ) {
+        if (hash) {
+          pushWith(`${spineHref}${hash}`);
+          pushWith(`${spineClean}${hash}`);
+        }
+        pushNo(spineHref);
+        pushNo(spineClean);
       }
     }
   });
 
-  return Array.from(set);
+  return [...withHash, ...noHash];
 };
 
 const resolveTocItemPosition = (
@@ -1167,7 +1374,8 @@ const resolveTocItemPosition = (
     try {
       const fromCfi = locations.locationFromCfi(itemCfi);
       const normalized = normalizeLoc(fromCfi);
-      if (normalized) return { pageNumber: normalized, locationIndex: normalized };
+      if (normalized)
+        return { pageNumber: normalized, locationIndex: normalized };
     } catch {
       // ignore cfi lookup errors
     }
@@ -1188,13 +1396,18 @@ const resolveTocItemPosition = (
 
     const spineClean = cleanPath(spineHref);
     const spineBase = spineClean.split("/").pop() || "";
-    if (spineClean === cleaned || spineBase === basename || cleaned.endsWith(spineClean)) {
+    if (
+      spineClean === cleaned ||
+      spineBase === basename ||
+      cleaned.endsWith(spineClean)
+    ) {
       const cfiBase = typeof spine?.cfiBase === "string" ? spine.cfiBase : "";
       if (!cfiBase) continue;
       try {
         const fromBase = locations.locationFromCfi(cfiBase);
         const normalized = normalizeLoc(fromBase);
-        if (normalized) return { pageNumber: normalized, locationIndex: normalized };
+        if (normalized)
+          return { pageNumber: normalized, locationIndex: normalized };
       } catch {
         // ignore cfiBase lookup errors
       }
@@ -1233,7 +1446,7 @@ const findTocLabel = (
 ): string | undefined => {
   for (const item of items) {
     if (!item) continue;
-    if (item.href && href && item.href.split("#")[0] === href.split("#")[0]) {
+    if (item.href && href && tocHrefMatches(item.href, href)) {
       return item.label || item.title;
     }
     if (Array.isArray(item.subitems)) {
@@ -1249,107 +1462,148 @@ const TocItem: React.FC<{
   depth: number;
   onSelect: (href: string) => void;
   activeHref?: string;
-}> = ({ item, depth, onSelect, activeHref }) => {
+  parentHref?: string;
+}> = ({ item, depth, onSelect, activeHref, parentHref }) => {
   const [expanded, setExpanded] = React.useState(depth < 1);
   const label = item?.label || item?.title || "Untitled";
   const href = typeof item?.href === "string" ? item.href : "";
-  const subitems = Array.isArray(item?.subitems) ? item.subitems : [];
+  const rawSubitems = Array.isArray(item?.subitems) ? item.subitems : [];
+  // Deduplicate: skip child items whose href is identical to the parent's href
+  // — some EPUBs repeat the section link as the first child, causing a visual
+  // duplicate when the parent is expanded.
+  const subitems = parentHref
+    ? rawSubitems.filter(
+        child =>
+          !(
+            typeof child?.href === "string" &&
+            tocHrefMatches(child.href, parentHref)
+          )
+      )
+    : rawSubitems;
   const hasChildren = subitems.length > 0;
   const pageNumber =
     typeof item?.pageNumber === "number" && Number.isFinite(item.pageNumber)
       ? Math.max(1, Math.round(item.pageNumber))
       : undefined;
   const locationIndex =
-    typeof item?.locationIndex === "number" && Number.isFinite(item.locationIndex)
+    typeof item?.locationIndex === "number" &&
+    Number.isFinite(item.locationIndex)
       ? Math.max(1, Math.round(item.locationIndex))
       : undefined;
-  const isActive = href && activeHref ? tocHrefMatches(href, activeHref) : false;
+  const isActive =
+    href && activeHref ? tocHrefMatches(href, activeHref) : false;
   const isHeading = !href && hasChildren;
   const itemFontWeight = isHeading ? 700 : depth > 0 ? 400 : 600;
 
+  // Row: expand chevron + label are sibling elements (never nested buttons).
+  // Having a <button> inside a <button> is invalid HTML — the browser promotes
+  // the inner one, which broke expand and navigation for nested TOC items.
   return (
     <Box>
       <Box
-        as={href ? "button" : "div"}
-        onClick={href ? () => onSelect(href) : undefined}
         sx={{
-          appearance: "none",
-          borderRadius: 8,
-          border: "1px solid",
-          borderColor: isActive
-            ? "var(--reader-chrome-text, #0f172a)"
-            : "transparent",
-          background: "transparent",
-          cursor: href ? "pointer" : "default",
-          justifyContent: "space-between",
           display: "flex",
           alignItems: "flex-start",
-          gap: 2,
-          width: "100%",
-          textAlign: "left",
           pl: 2 + depth * 3,
-          pr: 2,
-          py: 2,
-          whiteSpace: "normal",
-          minHeight: "unset",
-          "&:focus,&:hover": {
-            background: href ? "rgba(148, 163, 184, 0.14)" : "transparent",
-            textDecoration: "none"
-          },
-          "&:active": {
-            background: href ? "rgba(148, 163, 184, 0.22)" : "transparent"
-          }
+          pr: 2
         }}
       >
+        {/* Expand / collapse chevron — only shown when there are children */}
         {hasChildren ? (
-          <Button
-            variant="ghost"
-            color="text"
-            onClick={event => {
-              event.stopPropagation();
-              setExpanded(prev => !prev);
+          <Box
+            as="button"
+            onClick={() => setExpanded(prev => !prev)}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            sx={{
+              appearance: "none",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              px: 1,
+              py: 2,
+              lineHeight: 1,
+              flexShrink: 0,
+              color: "var(--reader-chrome-text, inherit)",
+              "&:focus,&:hover": { opacity: 0.7 }
             }}
-            sx={{ px: 1, py: 0, minHeight: "unset", lineHeight: 1 }}
           >
             {expanded ? "▾" : "▸"}
-          </Button>
+          </Box>
         ) : (
-          <Box as="span" sx={{ width: 16 }} />
+          <Box as="span" sx={{ width: 20, flexShrink: 0 }} />
         )}
+
+        {/* Navigation label — its own button, never a parent of another button */}
         <Box
-          as="span"
+          as={href ? "button" : "div"}
+          onClick={href ? () => onSelect(href) : undefined}
           sx={{
+            appearance: "none",
             flex: 1,
             minWidth: 0,
-            overflowWrap: "anywhere",
-            lineHeight: 1.25,
-            fontWeight: itemFontWeight
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 2,
+            background: "transparent",
+            borderRadius: 8,
+            border: "1px solid",
+            borderColor: isActive
+              ? "var(--reader-chrome-text, #0f172a)"
+              : "transparent",
+            cursor: href ? "pointer" : "default",
+            textAlign: "left",
+            py: 2,
+            pr: 1,
+            color: "var(--reader-chrome-text, inherit)",
+            "&:focus,&:hover": {
+              background: href ? "rgba(148, 163, 184, 0.14)" : "transparent",
+              textDecoration: "none"
+            },
+            "&:active": {
+              background: href ? "rgba(148, 163, 184, 0.22)" : "transparent"
+            }
           }}
         >
-          {label}
+          <Box
+            as="span"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              lineHeight: 1.25,
+              fontWeight: itemFontWeight
+            }}
+          >
+            {label}
+          </Box>
+          {pageNumber ? (
+            <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.8 }}>
+              p. {pageNumber}
+            </Box>
+          ) : locationIndex ? (
+            <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.7 }}>
+              loc. {locationIndex}
+            </Box>
+          ) : (
+            <span />
+          )}
         </Box>
-        {pageNumber ? (
-          <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.8 }}>
-            p. {pageNumber}
-          </Box>
-        ) : locationIndex ? (
-          <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.7 }}>
-            loc. {locationIndex}
-          </Box>
-        ) : (
-          <span />
-        )}
       </Box>
 
       {hasChildren && expanded && (
         <Box>
           {subitems.map((child: EpubTocItem, index: number) => (
             <TocItem
-              key={child?.id || child?.href || `${child?.label || child?.title}-${index}`}
+              key={
+                child?.id ||
+                child?.href ||
+                `${child?.label || child?.title}-${index}`
+              }
               item={child}
               depth={depth + 1}
               onSelect={onSelect}
               activeHref={activeHref}
+              parentHref={href || parentHref}
             />
           ))}
         </Box>
@@ -1410,7 +1664,10 @@ const resultCardStyles: ThemeUIStyleObject = {
   cursor: "pointer"
 };
 
-const edgeButtonStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject } = {
+const edgeButtonStyles: {
+  left: ThemeUIStyleObject;
+  right: ThemeUIStyleObject;
+} = {
   left: {
     position: "absolute",
     top: 0,
@@ -1435,7 +1692,10 @@ const edgeButtonStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject } 
   }
 };
 
-const floatingNavStyles: { left: ThemeUIStyleObject; right: ThemeUIStyleObject } = {
+const floatingNavStyles: {
+  left: ThemeUIStyleObject;
+  right: ThemeUIStyleObject;
+} = {
   left: {
     position: "absolute",
     left: 10,

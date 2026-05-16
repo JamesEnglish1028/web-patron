@@ -10,6 +10,7 @@ import { normalizeLink, UriTemplateTerms, TemplatedLink } from "utils/opds";
 import { useRouter } from "next/router";
 import useLinkUtils from "hooks/useLinkUtils";
 import useLibraryContext from "./context/LibraryContext";
+import { navigateToUrl } from "utils/navigation";
 
 interface SignOutProps {
   color?: string;
@@ -50,7 +51,7 @@ async function performLogoutRequest(
     //  the browser has already dropped its local Palace credentials. In
     //  the future, we can report the error here.
   } finally {
-    window.location.href = signedOutUrl;
+    navigateToUrl(signedOutUrl);
   }
 }
 

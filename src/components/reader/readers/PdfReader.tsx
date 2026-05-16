@@ -1,143 +1,83 @@
 import * as React from "react";
-import { Box } from "theme-ui";
-import Button, { AnchorButton } from "components/Button";
+import { Box, type ThemeUIStyleObject } from "theme-ui";
+import Button from "components/Button";
 import Stack from "components/Stack";
 import { Text } from "components/Text";
+import Info from "icons/Info";
 import Trash from "icons/Trash";
 import ReaderControls from "../ReaderControls";
 import ReaderUtilityControls from "../ReaderUtilityControls";
 import { useReaderInfo } from "../ReaderWrapper";
-import { getProxiedUrl } from "utils/proxyUrl";
-import { toBrowserFetchUrl } from "utils/localCmProxy";
+import AnnotationPanel from "../AnnotationPanel";
+import ReaderNavigationPanel from "../ReaderNavigationPanel";
+import { downloadAnnotationAsRis } from "utils/ris";
+import { useAnnotationSync } from "hooks/useAnnotationSync";
+import { usePdfDocument } from "hooks/usePdfDocument";
+import { usePdfAnnotations } from "hooks/usePdfAnnotations";
+import {
+  type PdfReaderProps,
+  type PdfRenderTask,
+  type TextLayerData,
+  type PdfSearchResult
+} from "./PdfReader.types";
+import { PdfNativeFallback } from "./PdfNativeFallback";
+import { PdfTextLayer } from "./PdfTextLayer";
+import { PdfTocTree } from "./PdfTocTree";
 
-type PdfJsModule = {
-  GlobalWorkerOptions: { workerSrc: string };
-  getDocument: (source: { url: string } | { data: Uint8Array }) => {
-    promise: Promise<PdfDocument>;
-  };
-};
-
-type PdfViewport = {
-  width: number;
-  height: number;
-  transform: number[];
-};
-
-type PdfRenderTask = {
-  promise: Promise<void>;
-  cancel?: () => void;
-};
-
-type PdfTextItem = {
-  str: string;
-  transform: number[];
-  width: number;
-  height: number;
-};
-
-type PdfTextContent = {
-  items: PdfTextItem[];
-};
-
-type TextLayerData = {
-  items: PdfTextItem[];
-  viewportTransform: number[];
-  canvasWidth: number;
-  canvasHeight: number;
-};
-
-type PdfPage = {
-  getViewport: (args: { scale: number }) => PdfViewport;
-  render: (args: {
-    canvasContext: CanvasRenderingContext2D;
-    viewport: PdfViewport;
-  }) => PdfRenderTask;
-  getTextContent?: () => Promise<PdfTextContent>;
-};
-
-type PdfDestinationRef = unknown;
-
-type PdfExplicitDestination = [PdfDestinationRef, ...unknown[]];
-
-type PdfOutlineNode = {
-  title?: string;
-  dest?: string | PdfExplicitDestination | null;
-  items?: PdfOutlineNode[];
-};
-
-type PdfDocument = {
-  numPages: number;
-  getPage: (pageNumber: number) => Promise<PdfPage>;
-  getOutline?: () => Promise<PdfOutlineNode[] | null>;
-  getDestination?: (name: string) => Promise<PdfExplicitDestination | null>;
-  getPageIndex?: (ref: PdfDestinationRef) => Promise<number>;
-  destroy?: () => Promise<void>;
-};
-
-type PdfTocItem = {
-  title: string;
-  pageNumber?: number;
-  children: PdfTocItem[];
-};
-
-type PdfBookmarkItem = {
-  id: string;
-  pageNumber: number;
-  createdAt: number;
-};
-
-type PdfAnnotationItem = {
-  id: string;
-  pageNumber: number;
-  note: string;
-  quotedText?: string;
-  createdAt: number;
-};
-
-type PdfReaderProps = {
-  url: string;
-  authToken?: string;
-  title?: string;
-  setLoading: (value: boolean) => void;
+// Style constants
+const iconOnlyControlButtonSx: ThemeUIStyleObject = {
+  px: 2,
+  minWidth: 44,
+  "& svg": {
+    width: "1.5em",
+    height: "1.5em",
+    mr: 0,
+    ml: 0
+  }
 };
 
 const PdfReader: React.FC<PdfReaderProps> = ({
   url,
   authToken,
   title,
+  bookUrl,
+  coverUrl,
+  bookAuthors,
+  bookPublisher,
+  bookLanguage,
+  bookIdentifier,
   setLoading
 }) => {
-  const objectUrlRef = React.useRef<string | null>(null);
+  const bookId = bookIdentifier ?? bookUrl ?? url;
+  const annotationSync = useAnnotationSync({
+    bookKey: url,
+    bookId,
+    mediaType: "pdf"
+  });
+
+  // Refs for rendering
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const primaryCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const secondaryCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const pdfRef = React.useRef<PdfDocument | null>(null);
   const renderTasksRef = React.useRef<PdfRenderTask[]>([]);
 
+  // Local UI state - declare before hooks that depend on them
   const [error, setError] = React.useState<string | null>(null);
-  const [pdfData, setPdfData] = React.useState<Uint8Array | null>(null);
-  const [pdfUrl, setPdfUrl] = React.useState<string | null>(null);
-  const [numPages, setNumPages] = React.useState(0);
   const [pageNumber, setPageNumber] = React.useState(1);
   const [scale, setScale] = React.useState(1);
   const [containerWidth, setContainerWidth] = React.useState(960);
-  const [useNativeFallback, setUseNativeFallback] = React.useState(false);
-  const [tocItems, setTocItems] = React.useState<PdfTocItem[]>([]);
+  const [useCustomPdfRender, setUseCustomPdfRender] = React.useState(true);
   const [tocTab, setTocTab] = React.useState<
     "toc" | "bookmarks" | "annotations"
   >("toc");
-  const [bookmarks, setBookmarks] = React.useState<PdfBookmarkItem[]>([]);
-  const [annotations, setAnnotations] = React.useState<PdfAnnotationItem[]>([]);
-  const [annotationDraft, setAnnotationDraft] = React.useState("");
-  const [editingAnnotationId, setEditingAnnotationId] = React.useState<
-    string | null
-  >(null);
-  const [editingAnnotationDraft, setEditingAnnotationDraft] =
-    React.useState("");
-
   const [tocActive, setTocActive] = React.useState(false);
   const [searchActive, setSearchActive] = React.useState(false);
   const [displayActive, setDisplayActive] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<PdfSearchResult[]>(
+    []
+  );
+  const [isSearching, setIsSearching] = React.useState(false);
   const [pageView, setPageView] = React.useState<"single" | "spread">("single");
   const [primaryTextData, setPrimaryTextData] =
     React.useState<TextLayerData | null>(null);
@@ -152,15 +92,92 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     string | null
   >(null);
 
+  // Extracted hooks for PDF document and annotations
+  const {
+    pdfRef,
+    pdfUrl,
+    numPages,
+    tocItems,
+    useNativeFallback,
+    error: pdfError
+  } = usePdfDocument(url, authToken, setLoading);
+
+  const {
+    bookmarks,
+    annotations,
+    annotationDraft,
+    setAnnotationDraft,
+    editingAnnotationId,
+    editingAnnotationDraft,
+    setEditingAnnotationDraft,
+    addBookmark: hookAddBookmark,
+    removeBookmark: hookRemoveBookmark,
+    addAnnotation: hookAddAnnotation,
+    removeAnnotation: hookRemoveAnnotation,
+    beginAnnotationEdit: hookBeginAnnotationEdit,
+    cancelAnnotationEdit: hookCancelAnnotationEdit,
+    saveAnnotationEdit: hookSaveAnnotationEdit,
+    copyAnnotation: hookCopyAnnotation
+  } = usePdfAnnotations(
+    url,
+    pageNumber,
+    numPages,
+    title,
+    bookUrl,
+    annotationSync
+  );
+
   const readerInfo = useReaderInfo();
 
-  const closePanels = () => {
+  // Sync pdfError to local error state
+  React.useEffect(() => {
+    if (pdfError) {
+      setError(pdfError);
+    }
+  }, [pdfError]);
+
+  // Populate the ReaderWrapper book-info panel with catalog metadata
+  React.useEffect(() => {
+    if (!readerInfo?.setBookInfo) return;
+    readerInfo.setBookInfo({
+      title: title || undefined,
+      author: bookAuthors || undefined,
+      publisher: bookPublisher || undefined,
+      language: bookLanguage || undefined,
+      identifier: bookIdentifier || undefined,
+      coverUrl: coverUrl || undefined
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title,
+    bookAuthors,
+    bookPublisher,
+    bookLanguage,
+    bookIdentifier,
+    coverUrl
+  ]);
+
+  const _closePanels = () => {
     setTocActive(false);
     setSearchActive(false);
     setDisplayActive(false);
   };
 
-  const leftControls = readerInfo?.backControl;
+  const leftControls = (
+    <Stack spacing={2}>
+      {readerInfo?.backControl}
+      <Button
+        variant="ghost"
+        color="text"
+        iconLeft={Info}
+        onClick={readerInfo?.toggleInfo}
+        ref={readerInfo?.infoButtonRef}
+        aria-label="Information"
+        title="Information"
+        sx={iconOnlyControlButtonSx}
+      />
+    </Stack>
+  );
 
   const openTocPanel = () => {
     setTocActive(prev => !prev);
@@ -180,204 +197,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     setSearchActive(false);
   };
 
-  React.useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      setPdfData(null);
-      setPdfUrl(null);
-      setNumPages(0);
-      setPageNumber(1);
-      setUseNativeFallback(false);
-      setTocItems([]);
-      setTocTab("toc");
-      setScale(1);
-      setPageView("single");
-      setTocActive(false);
-      setSearchActive(false);
-      setDisplayActive(false);
-
-      try {
-        const proxied = toBrowserFetchUrl(url);
-        const isLocalCm = proxied !== url;
-        const fetchUrl = isLocalCm ? proxied : getProxiedUrl(url);
-        const fetchHeaders: Record<string, string> = {};
-        if (authToken) {
-          const headerKey = isLocalCm
-            ? "Authorization"
-            : "X-Reader-Authorization";
-          fetchHeaders[headerKey] = authToken;
-        }
-        const response = await fetch(fetchUrl, {
-          headers: Object.keys(fetchHeaders).length ? fetchHeaders : undefined
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to load PDF (${response.status})`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const blobUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = blobUrl;
-        if (!active) return;
-        setPdfData(bytes);
-        setPdfUrl(blobUrl);
-      } catch (err) {
-        if (!active) return;
-        const message =
-          err instanceof Error ? err.message : "Failed to load PDF.";
-        setError(`PDF error: ${message}`);
-        setLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
-  }, [url, authToken, setLoading]);
-
-  React.useEffect(() => {
-    try {
-      const rawBookmarks = localStorage.getItem(`reader:pdf:bookmarks:${url}`);
-      const rawAnnotations = localStorage.getItem(
-        `reader:pdf:annotations:${url}`
-      );
-      setBookmarks(rawBookmarks ? JSON.parse(rawBookmarks) : []);
-      setAnnotations(rawAnnotations ? JSON.parse(rawAnnotations) : []);
-    } catch {
-      setBookmarks([]);
-      setAnnotations([]);
-    }
-    setAnnotationDraft("");
-    setEditingAnnotationId(null);
-    setEditingAnnotationDraft("");
-  }, [url]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(
-        `reader:pdf:bookmarks:${url}`,
-        JSON.stringify(bookmarks)
-      );
-    } catch {
-      // ignore storage errors
-    }
-  }, [bookmarks, url]);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(
-        `reader:pdf:annotations:${url}`,
-        JSON.stringify(annotations)
-      );
-    } catch {
-      // ignore storage errors
-    }
-  }, [annotations, url]);
-
-  React.useEffect(() => {
-    if (!pdfData) return;
-
-    let active = true;
-
-    const initPdf = async () => {
-      try {
-        const pdfModuleUrl = "/pdf.min.mjs";
-        const pdfjs = (await import(
-          /* webpackIgnore: true */ pdfModuleUrl
-        )) as PdfJsModule;
-        pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-        if (!active) return;
-
-        const loadingTask = pdfjs.getDocument({ data: pdfData });
-        const pdf = await loadingTask.promise;
-        if (!active) {
-          await pdf.destroy?.();
-          return;
-        }
-
-        pdfRef.current = pdf;
-        setNumPages(pdf.numPages || 0);
-        setPageNumber(1);
-
-        const resolveDestToPage = async (dest: unknown) => {
-          if (!pdf.getPageIndex) return undefined;
-
-          let explicitDest: PdfExplicitDestination | null = null;
-          if (Array.isArray(dest)) {
-            explicitDest = dest as PdfExplicitDestination;
-          } else if (typeof dest === "string" && pdf.getDestination) {
-            explicitDest = await pdf.getDestination(dest);
-          }
-
-          if (!explicitDest || !explicitDest.length) return undefined;
-          const destRef = explicitDest[0];
-          if (!destRef) return undefined;
-
-          try {
-            const pageIdx = await pdf.getPageIndex(destRef);
-            return Number.isFinite(pageIdx) ? pageIdx + 1 : undefined;
-          } catch {
-            return undefined;
-          }
-        };
-
-        const normalizeOutline = async (
-          items: PdfOutlineNode[] | null
-        ): Promise<PdfTocItem[]> => {
-          if (!items?.length) return [];
-
-          const normalized = await Promise.all(
-            items.map(async item => {
-              const titleText = String(item?.title || "").trim() || "Untitled";
-              const page = await resolveDestToPage(item?.dest);
-              const children = await normalizeOutline(item?.items || null);
-              return {
-                title: titleText,
-                pageNumber: page,
-                children
-              } as PdfTocItem;
-            })
-          );
-
-          return normalized;
-        };
-
-        const rawOutline = (await pdf.getOutline?.()) || null;
-        const parsedOutline = await normalizeOutline(rawOutline);
-        setTocItems(parsedOutline);
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Unknown PDF init error";
-        console.warn(
-          "Custom PDF renderer failed, using native fallback:",
-          message
-        );
-        setUseNativeFallback(true);
-        setLoading(false);
-      }
-    };
-
-    initPdf();
-
-    return () => {
-      active = false;
-      renderTasksRef.current.forEach(task => task?.cancel?.());
-      renderTasksRef.current = [];
-      if (pdfRef.current?.destroy) {
-        void pdfRef.current.destroy();
-      }
-      pdfRef.current = null;
-    };
-  }, [pdfData, setLoading]);
+  // --- Rendering ---
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -404,12 +224,24 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     }
   }, [pageView]);
 
+  // Render the current page(s) onto canvas(es).  Spread view renders two
+  // pages side-by-side using primary and secondary canvases.  After the render
+  // tasks complete, text content is fetched so PdfTextLayer can overlay a
+  // transparent, selectable surface for copy/citation without the PDF needing
+  // to be a tagged or searchable PDF.
   React.useEffect(() => {
     const renderPages = async () => {
       const pdf = pdfRef.current;
       const primaryCanvas = primaryCanvasRef.current;
       const secondaryCanvas = secondaryCanvasRef.current;
-      if (!pdf || !primaryCanvas || !numPages || useNativeFallback) return;
+      if (
+        !pdf ||
+        !primaryCanvas ||
+        !numPages ||
+        useNativeFallback ||
+        !useCustomPdfRender
+      )
+        return;
 
       setPrimaryTextData(null);
       setSecondaryTextData(null);
@@ -515,7 +347,7 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             "Custom PDF render failed, using native fallback:",
             message
           );
-          setUseNativeFallback(true);
+          setUseCustomPdfRender(false);
           setLoading(false);
         }
       }
@@ -529,6 +361,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     containerWidth,
     pageView,
     useNativeFallback,
+    useCustomPdfRender,
+    pdfRef,
     setLoading
   ]);
 
@@ -541,51 +375,96 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 
   const zoomOut = () => setScale(prev => Math.max(0.6, prev - 0.1));
   const zoomIn = () => setScale(prev => Math.min(2, prev + 0.1));
-  const createId = () =>
-    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const activeBookmark = bookmarks.find(
+    entry => entry.pageNumber === pageNumber
+  );
 
+  // UI adapters for annotation handlers
   const addBookmark = () => {
-    if (bookmarks.some(entry => entry.pageNumber === pageNumber)) return;
-    setBookmarks(prev => [
-      ...prev,
-      { id: createId(), pageNumber, createdAt: Date.now() }
-    ]);
+    hookAddBookmark();
     setTocActive(true);
     setTocTab("bookmarks");
   };
 
-  const beginAnnotationEdit = (annotation: PdfAnnotationItem) => {
-    setEditingAnnotationId(annotation.id);
-    setEditingAnnotationDraft(annotation.note);
+  const toggleBookmark = () => {
+    if (activeBookmark) {
+      hookRemoveBookmark(activeBookmark.id);
+      return;
+    }
+    addBookmark();
   };
 
-  const cancelAnnotationEdit = () => {
-    setEditingAnnotationId(null);
-    setEditingAnnotationDraft("");
+  const removeBookmark = (id: string) => {
+    hookRemoveBookmark(id);
   };
 
-  const saveAnnotationEdit = () => {
-    const note = editingAnnotationDraft.trim();
-    if (!editingAnnotationId || !note) return;
-    setAnnotations(prev =>
-      prev.map(annotation =>
-        annotation.id === editingAnnotationId
-          ? {
-              ...annotation,
-              note
-            }
-          : annotation
-      )
-    );
-    setEditingAnnotationId(null);
-    setEditingAnnotationDraft("");
+  const addAnnotation = () => {
+    hookAddAnnotation();
+    setPendingCitationText(null);
   };
 
   const removeAnnotation = (id: string) => {
-    setAnnotations(prev => prev.filter(entry => entry.id !== id));
-    if (editingAnnotationId === id) {
-      setEditingAnnotationId(null);
-      setEditingAnnotationDraft("");
+    hookRemoveAnnotation(id);
+  };
+
+  const beginAnnotationEdit = (annotation: any) => {
+    hookBeginAnnotationEdit(annotation);
+  };
+
+  const cancelAnnotationEdit = () => {
+    hookCancelAnnotationEdit();
+  };
+
+  const saveAnnotationEdit = () => {
+    hookSaveAnnotationEdit();
+  };
+
+  const copyAnnotation = (annotation: any) => {
+    hookCopyAnnotation(annotation);
+  };
+
+  // --- PDF full-text search ---
+  // Iterates every page via pdfjs getTextContent(), concatenates extracted
+  // text items, and collects ±40-character excerpts for every match.
+  const runSearch = async () => {
+    if (!searchQuery.trim() || !pdfRef.current || isSearching) return;
+    const query = searchQuery.trim().toLowerCase();
+    setIsSearching(true);
+    setSearchResults([]);
+    try {
+      const pdf = pdfRef.current;
+      const results: PdfSearchResult[] = [];
+      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+        const page = await pdf.getPage(pageNo);
+        if (!page.getTextContent) continue;
+        try {
+          const textContent = await page.getTextContent();
+          const text = textContent.items.map(item => item.str).join(" ");
+          const lower = text.toLowerCase();
+          let pos = 0;
+          while ((pos = lower.indexOf(query, pos)) !== -1) {
+            const start = Math.max(0, pos - 40);
+            const end = Math.min(text.length, pos + query.length + 40);
+            const excerpt =
+              (start > 0 ? "\u2026" : "") +
+              text.slice(start, end) +
+              (end < text.length ? "\u2026" : "");
+            results.push({ pageNumber: pageNo, excerpt });
+            pos += query.length;
+            // Cap at 3 results per page so the list stays scannable
+            if (results.filter(r => r.pageNumber === pageNo).length >= 3) break;
+          }
+          // Stop after 200 total results to avoid flooding the panel
+          if (results.length >= 200) break;
+        } catch {
+          // text content unavailable for this page
+        }
+      }
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -606,10 +485,6 @@ const PdfReader: React.FC<PdfReaderProps> = ({
     []
   );
 
-  const nativeViewerSrc = pdfUrl
-    ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH`
-    : null;
-
   const lastVisiblePage =
     pageView === "spread" ? Math.min(numPages, pageNumber + 1) : pageNumber;
   const progressLabel =
@@ -619,169 +494,24 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         : `Page ${pageNumber} of ${numPages}`
       : "Loading pages...";
 
-  if (useNativeFallback && pdfUrl) {
+  if ((useNativeFallback || !useCustomPdfRender) && pdfUrl) {
     return (
-      <Box
-        sx={{
-          flex: 1,
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column"
-        }}
-      >
-        <ReaderControls
-          title={title || ""}
-          centerTitle
-          canPrev={false}
-          canNext={false}
-          canAdjust={false}
-          hideNavControls
-          hideAdjustControls
-          leftControls={leftControls}
-          extraControls={
-            <ReaderUtilityControls
-              onToggleToc={() => setTocActive(prev => !prev)}
-              onToggleSearch={() => setSearchActive(prev => !prev)}
-              onToggleTheme={() => setDisplayActive(prev => !prev)}
-              disableBookmark
-              tocActive={tocActive}
-              searchActive={searchActive}
-              displayActive={displayActive}
-            />
-          }
-        />
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: "70vh",
-            overflow: "hidden",
-            px: { _: 2, md: 3 },
-            py: 3,
-            background:
-              "linear-gradient(180deg, rgba(241,245,249,0.96) 0%, rgba(226,232,240,0.9) 100%)"
-          }}
-        >
-          <Box
-            sx={{
-              maxWidth: 1200,
-              mx: "auto",
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: 3
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 3,
-                px: 3,
-                py: 3,
-                borderRadius: 14,
-                border: "1px solid rgba(148, 163, 184, 0.28)",
-                background: "rgba(255,255,255,0.82)",
-                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)"
-              }}
-            >
-              <Box>
-                <Text variant="text.headers.primary">PDF Reader</Text>
-                <Text
-                  variant="text.detail"
-                  sx={{ color: "ui.gray.dark", mt: 1 }}
-                >
-                  This title is using compatibility mode because custom canvas
-                  rendering is unavailable in this browser/runtime.
-                </Text>
-              </Box>
-              <Stack spacing={2} sx={{ flexWrap: "wrap" }}>
-                <AnchorButton
-                  href={pdfUrl || undefined}
-                  newTab
-                  variant="ghost"
-                  color="text"
-                >
-                  Open in New Tab
-                </AnchorButton>
-                <AnchorButton
-                  href={pdfUrl || undefined}
-                  download={title ? `${title}.pdf` : "book.pdf"}
-                  variant="filled"
-                  color="brand.primary"
-                >
-                  Download PDF
-                </AnchorButton>
-              </Stack>
-            </Box>
-            <Box
-              sx={{
-                flex: 1,
-                minHeight: "64vh",
-                borderRadius: 18,
-                overflow: "hidden",
-                border: "1px solid rgba(15, 23, 42, 0.08)",
-                background: "#cbd5e1",
-                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.16)",
-                position: "relative"
-              }}
-            >
-              <Box
-                sx={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "radial-gradient(circle at top, rgba(255,255,255,0.35), transparent 48%)",
-                  pointerEvents: "none",
-                  zIndex: 1
-                }}
-              />
-              <iframe
-                src={nativeViewerSrc || undefined}
-                title={title || "PDF reader"}
-                width="100%"
-                height="100%"
-                frameBorder={0}
-              />
-            </Box>
-            <Box
-              sx={{
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 2,
-                px: 3,
-                py: 2,
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.74)",
-                border: "1px solid rgba(148, 163, 184, 0.22)"
-              }}
-            >
-              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                Patron Web provides styled reader chrome while this
-                compatibility mode delegates rendering to the browser PDF
-                surface.
-              </Text>
-              <Button
-                variant="ghost"
-                color="text"
-                onClick={() =>
-                  window.open(
-                    pdfUrl || undefined,
-                    "_blank",
-                    "noopener,noreferrer"
-                  )
-                }
-              >
-                Pop Out Reader
-              </Button>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
+      <PdfNativeFallback
+        title={title || ""}
+        pdfUrl={pdfUrl}
+        nativeViewerSrc={
+          pdfUrl
+            ? `${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&pagemode=none&view=FitH`
+            : ""
+        }
+        tocActive={tocActive}
+        searchActive={searchActive}
+        displayActive={displayActive}
+        setTocActive={setTocActive}
+        setSearchActive={setSearchActive}
+        setDisplayActive={setDisplayActive}
+        leftControls={leftControls}
+      />
     );
   }
 
@@ -826,7 +556,8 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             onToggleToc={openTocPanel}
             onToggleSearch={openSearchPanel}
             onToggleTheme={openDisplayPanel}
-            onAddBookmark={addBookmark}
+            onAddBookmark={toggleBookmark}
+            bookmarkActive={Boolean(activeBookmark)}
             tocActive={tocActive}
             searchActive={searchActive}
             displayActive={displayActive}
@@ -834,7 +565,238 @@ const PdfReader: React.FC<PdfReaderProps> = ({
         }
       />
 
-      {(tocActive || searchActive || displayActive) && (
+      {annotationSync.serverResumeLabel && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            px: 3,
+            py: 2,
+            bg: "ui.gray.light",
+            borderBottom: "1px solid",
+            borderColor: "ui.gray.medium"
+          }}
+        >
+          <Text variant="text.detail">
+            Continue from {annotationSync.serverResumeLabel}?
+          </Text>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <Button
+              variant="filled"
+              color="brand.primary"
+              onClick={() => {
+                const pos = annotationSync.serverLastPosition as
+                  | { pageNumber: number }
+                  | null
+                  | undefined;
+                if (pos?.pageNumber) setPageNumber(pos.pageNumber);
+                annotationSync.dismissServerResume();
+              }}
+            >
+              Jump there
+            </Button>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={annotationSync.dismissServerResume}
+            >
+              Stay here
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {tocActive && (
+        <ReaderNavigationPanel
+          storageKey="pdf"
+          activeTab={tocTab}
+          onTabChange={setTocTab}
+          initialWidth={360}
+          minWidth={320}
+          maxWidth={720}
+          top={68}
+          right={16}
+          zIndex={21}
+          panelSx={{ p: 3 }}
+          tocContent={
+            tocItems.length > 0 ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                  overflowY: "auto",
+                  flex: 1,
+                  minHeight: 0
+                }}
+              >
+                <PdfTocTree
+                  items={tocItems}
+                  activePage={pageNumber}
+                  onSelectPage={nextPage => {
+                    if (!nextPage) return;
+                    const alignedPage =
+                      pageView === "spread" && nextPage % 2 === 0
+                        ? Math.max(1, nextPage - 1)
+                        : nextPage;
+                    setPageNumber(alignedPage);
+                    setTocActive(false);
+                  }}
+                />
+              </Box>
+            ) : (
+              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                No PDF outline detected. This file may not include structured
+                TOC entries.
+              </Text>
+            )
+          }
+          bookmarksContent={
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Button variant="ghost" color="text" onClick={addBookmark}>
+                Bookmark current page
+              </Button>
+              {bookmarks.length > 0 ? (
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    overflowY: "auto",
+                    flex: 1,
+                    minHeight: 0,
+                    pr: 1
+                  }}
+                >
+                  {bookmarks
+                    .slice()
+                    .sort((a, b) => a.pageNumber - b.pageNumber)
+                    .map(bookmark => (
+                      <Box
+                        key={bookmark.id}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 2,
+                          border: "1px solid",
+                          borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                          borderRadius: 8,
+                          p: 2
+                        }}
+                      >
+                        <Button
+                          variant="ghost"
+                          color="text"
+                          sx={{
+                            justifyContent: "flex-start",
+                            px: 0,
+                            py: 0,
+                            minHeight: "unset"
+                          }}
+                          onClick={() => {
+                            const alignedPage =
+                              pageView === "spread" &&
+                              bookmark.pageNumber % 2 === 0
+                                ? Math.max(1, bookmark.pageNumber - 1)
+                                : bookmark.pageNumber;
+                            setPageNumber(alignedPage);
+                            setTocActive(false);
+                          }}
+                        >
+                          Page {bookmark.pageNumber}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          color="text"
+                          iconLeft={Trash}
+                          onClick={() => removeBookmark(bookmark.id)}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    ))}
+                </Box>
+              ) : (
+                <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                  No bookmarks yet.
+                </Text>
+              )}
+            </Box>
+          }
+          annotationsContent={
+            <AnnotationPanel
+              pendingAnnotationText={pendingCitationText}
+              annotationDraft={annotationDraft}
+              onAnnotationDraftChange={setAnnotationDraft}
+              onRemovePendingAnnotationText={() => setPendingCitationText(null)}
+              onAddAnnotation={addAnnotation}
+              annotations={annotations
+                .slice()
+                .sort((a, b) => a.pageNumber - b.pageNumber)
+                .map(annotation => ({
+                  id: annotation.id,
+                  note: annotation.note,
+                  quotedText: annotation.quotedText,
+                  pageNumber: annotation.pageNumber
+                }))}
+              editingAnnotationId={editingAnnotationId}
+              editingAnnotationDraft={editingAnnotationDraft}
+              onEditingAnnotationDraftChange={setEditingAnnotationDraft}
+              onBeginEdit={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (ann) beginAnnotationEdit(ann);
+              }}
+              onSaveEdit={saveAnnotationEdit}
+              onCancelEdit={cancelAnnotationEdit}
+              onDelete={removeAnnotation}
+              onCopy={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (ann) copyAnnotation(ann);
+              }}
+              onDownload={annotation => {
+                const ann = annotations.find(a => a.id === annotation.id);
+                if (!ann) return;
+
+                downloadAnnotationAsRis(ann, {
+                  title,
+                  author: bookAuthors,
+                  publisher: bookPublisher,
+                  url: bookUrl || url,
+                  referenceType: "EBOOK"
+                });
+              }}
+              onNavigate={annotation => {
+                const alignedPage =
+                  pageView === "spread" && annotation.pageNumber! % 2 === 0
+                    ? Math.max(1, annotation.pageNumber! - 1)
+                    : annotation.pageNumber;
+                setPageNumber(alignedPage!);
+                setTocActive(false);
+              }}
+              saveButtonLabel="Save note"
+              draftPlaceholder="Type a note"
+              citationBookTitle={title}
+              citationAuthor={bookAuthors}
+              citationPublisher={bookPublisher}
+            />
+          }
+        />
+      )}
+
+      {(searchActive || displayActive) && (
         <Box
           sx={{
             position: "absolute",
@@ -843,7 +805,9 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             zIndex: 20,
             width: "min(360px, calc(100vw - 32px))",
             maxHeight: "70vh",
-            overflowY: "auto",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
             background: "var(--reader-chrome-bg, #ffffff)",
             border: "1px solid",
             borderColor: "var(--reader-chrome-border, #e2e8f0)",
@@ -852,370 +816,135 @@ const PdfReader: React.FC<PdfReaderProps> = ({
             p: 3
           }}
         >
-          {tocActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
-                {(
-                  [
-                    { key: "toc", label: "TOC" },
-                    { key: "bookmarks", label: "Bookmarks" },
-                    { key: "annotations", label: "Annotations" }
-                  ] as const
-                ).map(tab => (
-                  <Button
-                    key={tab.key}
-                    variant={tocTab === tab.key ? "filled" : "ghost"}
-                    color="text"
-                    onClick={() => setTocTab(tab.key)}
-                  >
-                    {tab.label}
-                  </Button>
-                ))}
-              </Box>
-
-              {tocTab === "toc" && (
-                <>
-                  {tocItems.length > 0 ? (
-                    <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
-                    >
-                      <PdfTocTree
-                        items={tocItems}
-                        activePage={pageNumber}
-                        onSelectPage={nextPage => {
-                          if (!nextPage) return;
-                          const alignedPage =
-                            pageView === "spread" && nextPage % 2 === 0
-                              ? Math.max(1, nextPage - 1)
-                              : nextPage;
-                          setPageNumber(alignedPage);
-                          setTocActive(false);
-                        }}
-                      />
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No PDF outline detected. This file may not include
-                      structured TOC entries.
-                    </Text>
-                  )}
-                </>
-              )}
-
-              {tocTab === "bookmarks" && (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <Button variant="ghost" color="text" onClick={addBookmark}>
-                    Bookmark current page
-                  </Button>
-                  {bookmarks.length > 0 ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        overflowY: "auto",
-                        maxHeight: "52vh",
-                        pr: 1
-                      }}
-                    >
-                      {bookmarks
-                        .slice()
-                        .sort((a, b) => a.pageNumber - b.pageNumber)
-                        .map(bookmark => (
-                          <Box
-                            key={bookmark.id}
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 2,
-                              border: "1px solid",
-                              borderColor:
-                                "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2
-                            }}
-                          >
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              sx={{
-                                justifyContent: "flex-start",
-                                px: 0,
-                                py: 0,
-                                minHeight: "unset"
-                              }}
-                              onClick={() => {
-                                const alignedPage =
-                                  pageView === "spread" &&
-                                  bookmark.pageNumber % 2 === 0
-                                    ? Math.max(1, bookmark.pageNumber - 1)
-                                    : bookmark.pageNumber;
-                                setPageNumber(alignedPage);
-                                setTocActive(false);
-                              }}
-                            >
-                              Page {bookmark.pageNumber}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              color="text"
-                              iconLeft={Trash}
-                              onClick={() =>
-                                setBookmarks(prev =>
-                                  prev.filter(entry => entry.id !== bookmark.id)
-                                )
-                              }
-                            >
-                              Remove
-                            </Button>
-                          </Box>
-                        ))}
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No bookmarks yet.
-                    </Text>
-                  )}
-                </Box>
-              )}
-
-              {tocTab === "annotations" && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    "& .pdf-annotation-input": { width: "100%", minHeight: 84 }
-                  }}
-                >
-                  {pendingCitationText && (
-                    <Box
-                      sx={{
-                        borderLeft: "3px solid",
-                        borderColor: "ui.gray.medium",
-                        pl: 2,
-                        py: 1,
-                        background: "rgba(0,0,0,0.03)",
-                        borderRadius: "0 4px 4px 0"
-                      }}
-                    >
-                      <Text
-                        variant="text.detail"
-                        sx={{ color: "ui.gray.dark", mb: 1 }}
-                      >
-                        Selected text:
-                      </Text>
-                      <Text
-                        variant="text.detail"
-                        sx={{ fontStyle: "italic", mb: 1 }}
-                      >
-                        &ldquo;{pendingCitationText}&rdquo;
-                      </Text>
-                      <Button
-                        variant="ghost"
-                        color="text"
-                        onClick={() => setPendingCitationText(null)}
-                      >
-                        Remove
-                      </Button>
-                    </Box>
-                  )}
-                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                    {pendingCitationText
-                      ? "Add an optional note"
-                      : "Add a note for this page"}
-                  </Text>
-                  <textarea
-                    className="pdf-annotation-input"
-                    value={annotationDraft}
-                    onChange={event => setAnnotationDraft(event.target.value)}
-                    placeholder={
-                      pendingCitationText ? "Optional note..." : "Type a note"
-                    }
-                  />
-                  <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
-                    <Button
-                      variant="ghost"
-                      color="text"
-                      onClick={() => {
-                        const note = annotationDraft.trim();
-                        if (!note && !pendingCitationText) return;
-                        setAnnotations(prev => [
-                          ...prev,
-                          {
-                            id: createId(),
-                            pageNumber,
-                            note,
-                            quotedText: pendingCitationText ?? undefined,
-                            createdAt: Date.now()
-                          }
-                        ]);
-                        setAnnotationDraft("");
-                        setPendingCitationText(null);
-                      }}
-                    >
-                      {pendingCitationText ? "Save citation" : "Save note"}
-                    </Button>
-                  </Box>
-                  {annotations.length > 0 ? (
-                    <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 1 }}
-                    >
-                      {annotations
-                        .slice()
-                        .sort((a, b) => a.pageNumber - b.pageNumber)
-                        .map(annotation => (
-                          <Box
-                            key={annotation.id}
-                            sx={{
-                              border: "1px solid",
-                              borderColor:
-                                "var(--reader-chrome-border, #e2e8f0)",
-                              borderRadius: 8,
-                              p: 2
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 2,
-                                mb: 1
-                              }}
-                            >
-                              <Button
-                                variant="ghost"
-                                color="text"
-                                onClick={() => {
-                                  const alignedPage =
-                                    pageView === "spread" &&
-                                    annotation.pageNumber % 2 === 0
-                                      ? Math.max(1, annotation.pageNumber - 1)
-                                      : annotation.pageNumber;
-                                  setPageNumber(alignedPage);
-                                  setTocActive(false);
-                                }}
-                              >
-                                Page {annotation.pageNumber}
-                              </Button>
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 1
-                                }}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  color="text"
-                                  onClick={() =>
-                                    beginAnnotationEdit(annotation)
-                                  }
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  color="text"
-                                  onClick={() =>
-                                    removeAnnotation(annotation.id)
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </Box>
-                            </Box>
-                            {editingAnnotationId === annotation.id ? (
-                              <>
-                                <textarea
-                                  className="pdf-annotation-input"
-                                  value={editingAnnotationDraft}
-                                  onChange={event =>
-                                    setEditingAnnotationDraft(
-                                      event.target.value
-                                    )
-                                  }
-                                  placeholder="Edit note"
-                                />
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 2,
-                                    mt: 2
-                                  }}
-                                >
-                                  <Button
-                                    variant="ghost"
-                                    color="text"
-                                    onClick={saveAnnotationEdit}
-                                    disabled={!editingAnnotationDraft.trim()}
-                                  >
-                                    Save
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    color="text"
-                                    onClick={cancelAnnotationEdit}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </Box>
-                              </>
-                            ) : (
-                              <>
-                                {annotation.quotedText && (
-                                  <Box
-                                    sx={{
-                                      borderLeft: "3px solid",
-                                      borderColor: "ui.gray.medium",
-                                      pl: 2,
-                                      mb: 1,
-                                      fontStyle: "italic"
-                                    }}
-                                  >
-                                    <Text
-                                      variant="text.detail"
-                                      sx={{ color: "ui.gray.dark" }}
-                                    >
-                                      &ldquo;{annotation.quotedText}&rdquo;
-                                    </Text>
-                                  </Box>
-                                )}
-                                {annotation.note && (
-                                  <Text variant="text.detail">
-                                    {annotation.note}
-                                  </Text>
-                                )}
-                              </>
-                            )}
-                          </Box>
-                        ))}
-                    </Box>
-                  ) : (
-                    <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                      No annotations yet.
-                    </Text>
-                  )}
-                </Box>
-              )}
-            </Box>
-          )}
-
           {searchActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Text variant="text.headers.primary">Search</Text>
-              <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
-                Full-text PDF search panel is not wired yet in this custom
-                canvas mode.
-              </Text>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden"
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 2,
+                  flexShrink: 0,
+                  "& .pdf-search-input": {
+                    flex: 1,
+                    border: "1px solid",
+                    borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                    borderRadius: 8,
+                    px: 2,
+                    py: "6px",
+                    fontSize: 14,
+                    background: "transparent",
+                    color: "var(--reader-chrome-text, inherit)",
+                    outline: "none"
+                  }
+                }}
+              >
+                <input
+                  className="pdf-search-input"
+                  type="search"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") void runSearch();
+                  }}
+                  placeholder="Search in book"
+                  aria-label="Search in book"
+                />
+                <Button
+                  variant="ghost"
+                  color="text"
+                  onClick={() => void runSearch()}
+                  disabled={isSearching || !searchQuery.trim()}
+                >
+                  {isSearching ? "Searching\u2026" : "Search"}
+                </Button>
+              </Box>
+              <Box sx={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+                {searchResults.length > 0 ? (
+                  <Box
+                    sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
+                    {searchResults.map((result, index) => (
+                      <Box
+                        key={`${result.pageNumber}-${index}`}
+                        role="button"
+                        tabIndex={0}
+                        sx={{
+                          p: 2,
+                          border: "1px solid",
+                          borderColor: "var(--reader-chrome-border, #e2e8f0)",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          "&:hover": { background: "rgba(0,0,0,0.04)" },
+                          "&:focus-visible": {
+                            outline: "2px solid",
+                            outlineColor: "brand.primary"
+                          }
+                        }}
+                        onClick={() => {
+                          const alignedPage =
+                            pageView === "spread" && result.pageNumber % 2 === 0
+                              ? Math.max(1, result.pageNumber - 1)
+                              : result.pageNumber;
+                          setPageNumber(alignedPage);
+                          setSearchActive(false);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            const alignedPage =
+                              pageView === "spread" &&
+                              result.pageNumber % 2 === 0
+                                ? Math.max(1, result.pageNumber - 1)
+                                : result.pageNumber;
+                            setPageNumber(alignedPage);
+                            setSearchActive(false);
+                          }
+                        }}
+                      >
+                        <Text
+                          variant="text.detail"
+                          sx={{ color: "ui.gray.dark", mb: 1 }}
+                        >
+                          Page {result.pageNumber}
+                        </Text>
+                        <Text variant="text.body.regular">
+                          {result.excerpt}
+                        </Text>
+                      </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <Text variant="text.detail" sx={{ color: "ui.gray.dark" }}>
+                    {isSearching
+                      ? "Searching\u2026"
+                      : searchQuery.trim()
+                        ? "No results found."
+                        : "Enter a search term above."}
+                  </Text>
+                )}
+              </Box>
             </Box>
           )}
 
           {displayActive && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+                flex: 1,
+                overflowY: "auto",
+                minHeight: 0
+              }}
+            >
               <Text variant="text.headers.primary">Display</Text>
               <Box>
                 <Text
@@ -1259,12 +988,6 @@ const PdfReader: React.FC<PdfReaderProps> = ({
               </Box>
             </Box>
           )}
-
-          <Box sx={{ mt: 3 }}>
-            <Button variant="ghost" color="text" onClick={closePanels}>
-              Close
-            </Button>
-          </Box>
         </Box>
       )}
 
@@ -1449,194 +1172,3 @@ const PdfReader: React.FC<PdfReaderProps> = ({
 };
 
 export default PdfReader;
-
-const PdfTextLayer: React.FC<{
-  data: TextLayerData;
-  onMouseDown?: () => void;
-  onMouseUp: (event: React.MouseEvent) => void;
-}> = ({ data, onMouseDown, onMouseUp }) => {
-  const { items, viewportTransform, canvasWidth, canvasHeight } = data;
-  const [vA, vB, vC, vD, vE, vF] = viewportTransform;
-  return (
-    <Box
-      role="none"
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-      sx={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: `${canvasWidth}px`,
-        height: `${canvasHeight}px`,
-        userSelect: "text",
-        cursor: "text",
-        overflow: "hidden",
-        zIndex: 10,
-        pointerEvents: "all"
-      }}
-    >
-      {items.map((item, idx) => {
-        if (!item.str) return null;
-        const [ia, ib, , , itx, ity] = item.transform;
-        // Apply the viewport's own transform matrix (accounts for viewBox
-        // origin offsets and Y-flip) to get true canvas-pixel coordinates.
-        const canvasX = vA * itx + vC * ity + vE;
-        const canvasY = vB * itx + vD * ity + vF;
-        // Font height in canvas pixels
-        const fontHeight = Math.sqrt(
-          (vA * ia + vC * ib) ** 2 + (vB * ia + vD * ib) ** 2
-        );
-        if (fontHeight <= 0) return null;
-        // PDF.js DEFAULT_FONT_ASCENT ≈ 0.8
-        const ascent = fontHeight * 0.8;
-        const w = item.width > 0 ? Math.abs(vA * item.width) : undefined;
-        return (
-          <Box
-            as="span"
-            key={idx}
-            sx={{
-              position: "absolute",
-              left: `${canvasX}px`,
-              top: `${canvasY - ascent}px`,
-              ...(w !== undefined ? { width: `${w}px` } : {}),
-              height: `${fontHeight}px`,
-              fontSize: `${fontHeight}px`,
-              fontFamily: "sans-serif",
-              whiteSpace: "pre",
-              color: "transparent",
-              cursor: "text",
-              lineHeight: 1,
-              userSelect: "text"
-            }}
-          >
-            {item.str}
-          </Box>
-        );
-      })}
-    </Box>
-  );
-};
-
-const PdfTocTree: React.FC<{
-  items: PdfTocItem[];
-  activePage: number;
-  onSelectPage: (page?: number) => void;
-  depth?: number;
-}> = ({ items, activePage, onSelectPage, depth = 0 }) => {
-  return (
-    <>
-      {items.map((item, idx) => (
-        <PdfTocNode
-          key={`${item.title}-${item.pageNumber || "na"}-${idx}`}
-          item={item}
-          activePage={activePage}
-          onSelectPage={onSelectPage}
-          depth={depth}
-        />
-      ))}
-    </>
-  );
-};
-
-const PdfTocNode: React.FC<{
-  item: PdfTocItem;
-  activePage: number;
-  onSelectPage: (page?: number) => void;
-  depth: number;
-}> = ({ item, activePage, onSelectPage, depth }) => {
-  const hasChildren = item.children.length > 0;
-  const [expanded, setExpanded] = React.useState(true);
-  const isActive = Boolean(item.pageNumber && item.pageNumber === activePage);
-  const isHeading = !item.pageNumber && hasChildren;
-  const itemFontWeight = isHeading ? 700 : depth > 0 ? 400 : 600;
-
-  return (
-    <Box>
-      <Box
-        as={item.pageNumber ? "button" : "div"}
-        onClick={
-          item.pageNumber ? () => onSelectPage(item.pageNumber) : undefined
-        }
-        sx={{
-          appearance: "none",
-          borderRadius: 8,
-          border: "1px solid",
-          borderColor: isActive
-            ? "var(--reader-chrome-text, #0f172a)"
-            : "transparent",
-          background: "transparent",
-          cursor: item.pageNumber ? "pointer" : "default",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          display: "flex",
-          gap: 2,
-          width: "100%",
-          textAlign: "left",
-          pl: 2 + depth * 3,
-          pr: 2,
-          py: 2,
-          whiteSpace: "normal",
-          minHeight: "unset",
-          "&:focus,&:hover": {
-            background: item.pageNumber
-              ? "rgba(148, 163, 184, 0.14)"
-              : "transparent",
-            textDecoration: "none"
-          },
-          "&:active": {
-            background: item.pageNumber
-              ? "rgba(148, 163, 184, 0.22)"
-              : "transparent"
-          }
-        }}
-      >
-        <Box
-          sx={{ display: "flex", alignItems: "flex-start", gap: 2, flex: 1 }}
-        >
-          {hasChildren ? (
-            <Button
-              variant="ghost"
-              color="text"
-              onClick={event => {
-                event.stopPropagation();
-                setExpanded(prev => !prev);
-              }}
-              sx={{ px: 1, py: 0, minHeight: "unset", lineHeight: 1 }}
-            >
-              {expanded ? "▾" : "▸"}
-            </Button>
-          ) : (
-            <Box as="span" sx={{ width: 16 }} />
-          )}
-          <Box
-            as="span"
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              overflowWrap: "anywhere",
-              lineHeight: 1.25,
-              fontWeight: itemFontWeight
-            }}
-          >
-            {item.title}
-          </Box>
-        </Box>
-        {item.pageNumber ? (
-          <Box as="span" sx={{ whiteSpace: "nowrap", opacity: 0.8 }}>
-            p. {item.pageNumber}
-          </Box>
-        ) : (
-          <span />
-        )}
-      </Box>
-      {hasChildren && expanded && (
-        <PdfTocTree
-          items={item.children}
-          activePage={activePage}
-          onSelectPage={onSelectPage}
-          depth={depth + 1}
-        />
-      )}
-    </Box>
-  );
-};

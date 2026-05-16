@@ -301,18 +301,6 @@ describe("SAML logout with logout endpoint", () => {
     }
   };
 
-  let originalLocation: Location;
-
-  beforeEach(() => {
-    originalLocation = window.location;
-    delete (window as any).location;
-    window.location = { ...originalLocation, href: "" } as any;
-  });
-
-  afterEach(() => {
-    (window as any).location = originalLocation;
-  });
-
   test("clears local credentials immediately before fetching logout endpoint", async () => {
     fetchMock.mockResponseOnce("", { status: 200 });
 
@@ -353,7 +341,9 @@ describe("SAML logout with logout endpoint", () => {
       ).toBe("Bearer test-token");
     });
 
-    expect(window.location.href).toContain("/signed-out");
+    expect(mockNavigateToUrl).toHaveBeenCalledWith(
+      expect.stringContaining("/signed-out")
+    );
   });
 
   test("navigates to signed-out page when logout request fails", async () => {
@@ -370,7 +360,9 @@ describe("SAML logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
 
     expect(fixtures.mockSignOut).toHaveBeenCalled();
@@ -390,7 +382,9 @@ describe("SAML logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
     expect(fixtures.mockSignOut).toHaveBeenCalled();
   });

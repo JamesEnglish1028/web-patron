@@ -12,6 +12,7 @@ import Button from "components/Button";
 import { getProxiedUrl } from "utils/proxyUrl";
 import { toBrowserFetchUrl } from "utils/localCmProxy";
 import { isPalaceManagerLikeUrl } from "utils/fulfill";
+import { useAnnotationSync } from "hooks/useAnnotationSync";
 
 type AudioBookmark = {
   id: string;
@@ -126,6 +127,11 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   contentType,
   setLoading
 }) => {
+  const annotationSync = useAnnotationSync({
+    bookKey: url,
+    bookId: url,
+    mediaType: "audio"
+  });
   const [error, setError] = React.useState<string | null>(null);
   const [retryKey, setRetryKey] = React.useState(0);
   const [manifest, setManifest] =
@@ -168,20 +174,31 @@ const AudioReader: React.FC<AudioReaderProps> = ({
 
   const persistPlaybackPosition = React.useCallback(
     (nextTrackIndex: number, nextTime: number) => {
+      const safeTime = Number.isFinite(nextTime) ? Math.max(0, nextTime) : 0;
       try {
         localStorage.setItem(
           storageKey,
           JSON.stringify({
             trackIndex: nextTrackIndex,
-            time: Number.isFinite(nextTime) ? Math.max(0, nextTime) : 0,
+            time: safeTime,
             updatedAt: Date.now()
           })
         );
       } catch {
         // ignore storage errors
       }
+      // Sync to annotation server (fire-and-forget)
+      const chapterTitle =
+        manifest?.tracks[nextTrackIndex]?.title ??
+        `Track ${nextTrackIndex + 1}`;
+      annotationSync.syncLastPosition({
+        trackIndex: nextTrackIndex,
+        time: safeTime,
+        chapterTitle
+      });
     },
-    [storageKey]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [storageKey, manifest]
   );
 
   React.useEffect(() => {
@@ -621,8 +638,45 @@ const AudioReader: React.FC<AudioReaderProps> = ({
   const persistCurrentPosition = React.useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    // persistPlaybackPosition writes localStorage + throttled server POST.
+    // For onTimeUpdate (fires every ~250 ms) this is safe: the server call
+    // is suppressed until 30 s have elapsed since the last POST.
     persistPlaybackPosition(trackIndex, audio.currentTime || 0);
   }, [persistPlaybackPosition, trackIndex]);
+
+  // Bypasses the 30-second throttle. Used on intentional save-points:
+  // pause, track change, and page close.
+  const flushCurrentPosition = React.useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !manifest?.tracks?.length) return;
+    const safeTime = Number.isFinite(audio.currentTime)
+      ? Math.max(0, audio.currentTime)
+      : 0;
+    const chapterTitle =
+      manifest.tracks[trackIndex]?.title ?? `Track ${trackIndex + 1}`;
+    annotationSync.flushLastPosition({
+      trackIndex,
+      time: safeTime,
+      chapterTitle
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manifest, trackIndex]);
+
+  // Flush position to server when the tab becomes hidden or the page unloads.
+  // `pagehide` fires in more browsers than `beforeunload` and is recommended
+  // for back/forward cache compatibility.
+  React.useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flushCurrentPosition();
+    };
+    const onPageHide = () => flushCurrentPosition();
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [flushCurrentPosition]);
 
   const handleLoadedMetadata = React.useCallback(() => {
     const audio = audioRef.current;
@@ -648,11 +702,13 @@ const AudioReader: React.FC<AudioReaderProps> = ({
       const clamped = Math.max(0, Math.min(manifest.tracks.length - 1, next));
       const nextTime = Math.max(0, time);
       resumeTimeRef.current = nextTime;
+      // Flush before switching so the position we’re leaving is recorded.
+      flushCurrentPosition();
       persistPlaybackPosition(clamped, nextTime);
       setTrackIndex(clamped);
       setResumeLabel(null);
     },
-    [manifest, persistPlaybackPosition]
+    [flushCurrentPosition, manifest, persistPlaybackPosition]
   );
 
   const handleTrackEnded = React.useCallback(() => {
@@ -661,25 +717,51 @@ const AudioReader: React.FC<AudioReaderProps> = ({
     goToTrack(trackIndex + 1);
   }, [goToTrack, manifest, trackIndex]);
 
-  const addBookmark = React.useCallback(() => {
-    const audio = audioRef.current;
-    if (!manifest?.tracks?.length || !audio) return;
-    const current = manifest.tracks[trackIndex];
-    const next: AudioBookmark = {
-      id: createId(),
-      trackIndex,
-      time: Math.max(0, audio.currentTime || 0),
-      trackTitle: current?.title || `Track ${trackIndex + 1}`,
-      createdAt: Date.now()
-    };
-    setBookmarks(prev => [next, ...prev]);
-    setShowToc(true);
-    setTocTab("bookmarks");
-  }, [manifest, trackIndex]);
+  const addBookmark = React.useCallback(
+    () => {
+      const audio = audioRef.current;
+      if (!manifest?.tracks?.length || !audio) return;
+      const current = manifest.tracks[trackIndex];
+      const next: AudioBookmark = {
+        id: createId(),
+        trackIndex,
+        time: Math.max(0, audio.currentTime || 0),
+        trackTitle: current?.title || `Track ${trackIndex + 1}`,
+        createdAt: Date.now()
+      };
+      setBookmarks(prev => [next, ...prev]);
+      setShowToc(true);
+      setTocTab("bookmarks");
+      // Sync to annotation server (fire-and-forget)
+      annotationSync.syncBookmark(
+        {
+          trackIndex: next.trackIndex,
+          time: next.time,
+          chapterTitle: next.trackTitle
+        },
+        next.id,
+        next.trackTitle
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [manifest, trackIndex]
+  );
 
-  const removeBookmark = React.useCallback((id: string) => {
-    setBookmarks(prev => prev.filter(entry => entry.id !== id));
-  }, []);
+  const removeBookmark = React.useCallback(
+    (id: string) => {
+      setBookmarks(prev => prev.filter(entry => entry.id !== id));
+      // Remove from server if we have a server-assigned id
+      try {
+        const raw = localStorage.getItem(`reader:serverIds:${url}`);
+        const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+        if (map[id]) annotationSync.removeServerBookmark(map[id]);
+      } catch {
+        // ignore
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [url]
+  );
 
   const sortedBookmarks = React.useMemo(
     () =>
@@ -755,6 +837,49 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           />
         }
       />
+      {annotationSync.serverResumeLabel && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            px: 3,
+            py: 2,
+            bg: "ui.gray.light",
+            borderBottom: "1px solid",
+            borderColor: "ui.gray.medium"
+          }}
+        >
+          <Text variant="text.detail">
+            Continue from {annotationSync.serverResumeLabel}?
+          </Text>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <Button
+              variant="filled"
+              color="brand.primary"
+              onClick={() => {
+                const pos = annotationSync.serverLastPosition as
+                  | { trackIndex: number; time: number }
+                  | null
+                  | undefined;
+                if (pos != null) goToTrack(pos.trackIndex, pos.time);
+                annotationSync.dismissServerResume();
+              }}
+            >
+              Jump there
+            </Button>
+            <Button
+              variant="ghost"
+              color="text"
+              onClick={annotationSync.dismissServerResume}
+            >
+              Stay here
+            </Button>
+          </Box>
+        </Box>
+      )}
       {showToc && (
         <Box sx={panelStyles.right as any}>
           <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
@@ -952,7 +1077,7 @@ const AudioReader: React.FC<AudioReaderProps> = ({
           ref={audioRef}
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={persistCurrentPosition}
-          onPause={persistCurrentPosition}
+          onPause={flushCurrentPosition}
           onEnded={handleTrackEnded}
           sx={{ width: "100%", mt: 3 }}
         />

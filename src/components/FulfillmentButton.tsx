@@ -220,6 +220,14 @@ const FulfillmentButton: React.FC<{
           isPrimaryAction={isPrimaryAction}
           trackOpenBookUrl={book.trackOpenBookUrl}
           title={book.title}
+          bookUrl={book.url ?? undefined}
+          coverUrl={book.imageUrl}
+          bookAuthors={
+            book.authors?.length ? book.authors.join(", ") : undefined
+          }
+          bookPublisher={book.publisher}
+          bookLanguage={book.language}
+          bookIdentifier={book.id}
         />
       );
     case "read-online-external":
@@ -351,8 +359,25 @@ const ReadOnlineInternal: React.FC<{
   details: ReadInternalFulfillment;
   trackOpenBookUrl: string | null;
   title?: string;
+  bookUrl?: string;
+  coverUrl?: string;
+  bookAuthors?: string;
+  bookPublisher?: string;
+  bookLanguage?: string;
+  bookIdentifier?: string;
   isPrimaryAction: boolean;
-}> = ({ details, isPrimaryAction, trackOpenBookUrl, title }) => {
+}> = ({
+  details,
+  isPrimaryAction,
+  trackOpenBookUrl,
+  title,
+  bookUrl,
+  coverUrl,
+  bookAuthors,
+  bookPublisher,
+  bookLanguage,
+  bookIdentifier
+}) => {
   const router = useRouter();
   const { buildReaderLink } = useLinkUtils();
   const { catalogUrl } = useLibraryContext();
@@ -403,7 +428,20 @@ const ReadOnlineInternal: React.FC<{
         details.contentType
           ? `ct=${encodeURIComponent(details.contentType)}`
           : null,
-        authKey ? `authKey=${encodeURIComponent(authKey)}` : null
+        authKey ? `authKey=${encodeURIComponent(authKey)}` : null,
+        title ? `title=${encodeURIComponent(title)}` : null,
+        bookUrl ? `bookUrl=${encodeURIComponent(bookUrl)}` : null,
+        coverUrl ? `coverUrl=${encodeURIComponent(coverUrl)}` : null,
+        bookAuthors ? `bookAuthors=${encodeURIComponent(bookAuthors)}` : null,
+        bookPublisher
+          ? `bookPublisher=${encodeURIComponent(bookPublisher)}`
+          : null,
+        bookLanguage
+          ? `bookLanguage=${encodeURIComponent(bookLanguage)}`
+          : null,
+        bookIdentifier
+          ? `bookIdentifier=${encodeURIComponent(bookIdentifier)}`
+          : null
       ]
         .filter(Boolean)
         .join("&");
