@@ -76,12 +76,17 @@ The app is configured with a YAML file. Point the app at it by setting the `CONF
 | `instance_name` | string | `"Patron Web Catalog"` | Name used in error tracking and debug output. Not patron-facing. |
 | `companion_app` | `"simplye"` \| `"openebooks"` | `"simplye"` | Selects which companion mobile app to reference in redirect prompts. |
 | `show_medium` | boolean | `true` | Whether to display the medium (e-book, audiobook, etc.) label on book cards. |
-| `bugsnag_api_key` | string | — | Bugsnag project API key. Omit to disable error tracking. |
-| `gtmId` | string | — | Google Tag Manager container ID (e.g. `GTM-XXXX`). Omit to disable analytics. |
 | `media_support` | mapping | `{}` | Per-MIME-type rendering mode. See [Media Support](#media-support) below. |
-| `staticLibraries` | mapping | — | Static library definitions. See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
+| `static_libraries` | mapping | — | Static library definitions. See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
 | `registries` | list | `[]` | One or more library registry URLs fetched at runtime. See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
-| `libraries` | mapping or string | — | **Deprecated.** Use `staticLibraries` (mapping) or `registries` (string). See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
+
+#### Deprecated Configuration Options
+
+| Key | Description                                                                                                                                                         |
+|-----|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `bugsnag_api_key` | Use the `BUGSNAG_API_KEY` environment variable instead. The value for this key is ignored.                                                                          |
+| `gtm_id` | Use the `GTM_ID` environment variable instead. The value for this key is ignored.                                                                                   |
+| `libraries` | Use `static_libraries` (mapping) or `registries` (string). See [Libraries and Registries Configuration Settings](#libraries-and-registries-configuration-settings). |
 
 ### Media Support
 
@@ -113,7 +118,9 @@ The app can then be run with `npm run start`, and it will pick up the env from y
 
 The following environment variables can be set to further configure the application.
 
-- Set `AXE_TEST=true` to run the application with `react-axe` enabled (only works when `NODE_ENV` is "development").
+- Set `BUGSNAG_API_KEY` to your Bugsnag project API key to enable error tracking. If unset, Bugsnag is disabled.
+- Set `GTM_ID` to your Google Tag Manager container ID (format: `GTM-XXXXXXXX`) to enable web analytics. If unset, GTM is not loaded.
+- Set `REACT_AXE=true` to run the application with `react-axe` enabled (only works when `NODE_ENV` is "development").
 - Set `ANALYZE=true` to generate bundle analysis files inside `.next/analyze` which will show bundle sizes for server and client, as well as composition.
 
 ## Manager, Registry, and Application Configurations
@@ -133,7 +140,7 @@ Define libraries directly in your configuration file as a dictionary mapping lib
 
 **Simple Format:**
 ```yaml
-staticLibraries:
+static_libraries:
   my-library: https://circulation.example.com/my-library/authentication_document
   another-lib: https://circulation.example.com/another-lib/authentication_document
 ```
@@ -143,12 +150,12 @@ staticLibraries:
 You can also specify a custom display title for each library that will appear on the multi-library selection page:
 
 ```yaml
-staticLibraries:
+static_libraries:
   my-library:
-    authDocUrl: https://circulation.example.com/my-library/authentication_document
+    auth_doc_url: https://circulation.example.com/my-library/authentication_document
     title: "My Public Library"
   another-lib:
-    authDocUrl: https://circulation.example.com/another-lib/authentication_document
+    auth_doc_url: https://circulation.example.com/another-lib/authentication_document
     title: "Community Reading Center"
 ```
 
@@ -166,8 +173,8 @@ Instead of hardcoding libraries, you can configure the app to fetch library info
 ```yaml
 registries:
   - url: https://registry.thepalaceproject.org/libraries/qa
-    refreshMinInterval: 60      # Seconds between fetch attempts (default: 60)
-    refreshMaxInterval: 300     # Seconds before forcing refresh (default: 300)
+    refresh_min_interval: 60    # Seconds between fetch attempts (default: 60)
+    refresh_max_interval: 300   # Seconds before forcing refresh (default: 300)
 ```
 
 **Multiple Registries:**
@@ -185,9 +192,9 @@ registries:
 Combine static libraries with registry-based libraries. Static library definitions always take precedence over registry entries when slugs conflict:
 
 ```yaml
-staticLibraries:
+static_libraries:
   featured-library:
-    authDocUrl: https://circulation.example.com/featured/authentication_document
+    auth_doc_url: https://circulation.example.com/featured/authentication_document
     title: "Featured Library"
 registries:
   - url: https://registry.thepalaceproject.org/libraries/qa
@@ -201,7 +208,7 @@ In this example, if the registry also contains a library with slug `featured-lib
 
 Using an object for `libraries` to define static libraries:
 ```yaml
-# DEPRECATED — rename to staticLibraries
+# DEPRECATED — rename to static_libraries
 libraries:
   my-library: https://circulation.example.com/my-library/authentication_document
 ```
@@ -219,7 +226,7 @@ libraries:
   my-library: https://circulation.example.com/my-library/authentication_document
 
 # NEW (recommended):
-staticLibraries:
+static_libraries:
   my-library: https://circulation.example.com/my-library/authentication_document
 ```
 

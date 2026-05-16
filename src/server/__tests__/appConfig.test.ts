@@ -6,7 +6,11 @@
 
 import path from "path";
 import type { AppConfig } from "interfaces";
-import { getAppConfig, resetAppConfigCache } from "../appConfig";
+import {
+  getAppConfig,
+  normalizeConfigKeys,
+  resetAppConfigCache
+} from "../appConfig";
 import { AppSetupError } from "errors";
 import { DEFAULT_REGISTRY_FETCH_TIMEOUT } from "constants/registry";
 
@@ -48,6 +52,71 @@ beforeEach(() => {
 afterEach(() => {
   process.env = originalEnv;
 });
+
+// ---------------------------------------------------------------------------
+// normalizeConfigKeys
+// ---------------------------------------------------------------------------
+
+/* eslint-disable camelcase */
+describe("normalizeConfigKeys", () => {
+  it.each([
+    ["returns object unchanged when key is absent", {}, ["fooBar"], {}],
+    [
+      "returns object unchanged when camelCase key is already present",
+      { fooBar: 42 },
+      ["fooBar"],
+      { fooBar: 42 }
+    ],
+    [
+      "renames snake_case key to camelCase",
+      { foo_bar: 42 },
+      ["fooBar"],
+      { fooBar: 42 }
+    ],
+    [
+      "does not touch keys not in camelKeys",
+      { other_key: 1, fooBar: 2 },
+      ["fooBar"],
+      { other_key: 1, fooBar: 2 }
+    ],
+    [
+      "does not throw for a single-word key that is present",
+      { registries: [] },
+      ["registries"],
+      { registries: [] }
+    ]
+  ])("%s", (_label, input, keys, expected) => {
+    expect(normalizeConfigKeys(input as Record<string, unknown>, keys)).toEqual(
+      expected
+    );
+  });
+
+  it("renames all matching snake_case keys when multiple camelKeys are given", () => {
+    expect(
+      normalizeConfigKeys({ foo_bar: 1, baz_qux: "x" }, ["fooBar", "bazQux"])
+    ).toEqual({ fooBar: 1, bazQux: "x" });
+  });
+
+  it.each([
+    ["fooBar", { fooBar: 1, foo_bar: 2 }],
+    ["gtmId", { gtmId: "a", gtm_id: "b" }],
+    ["refreshMinInterval", { refreshMinInterval: 30, refresh_min_interval: 60 }]
+  ])(
+    "throws AppSetupError when both %s and its snake_case equivalent are set",
+    (camelKey, input) => {
+      expect(() =>
+        normalizeConfigKeys(input as Record<string, unknown>, [camelKey])
+      ).toThrow(AppSetupError);
+    }
+  );
+
+  it("error message includes both conflicting key names", () => {
+    expect(() =>
+      normalizeConfigKeys({ fooBar: 1, foo_bar: 2 }, ["fooBar"])
+    ).toThrow("'foo_bar' and 'fooBar'");
+  });
+});
+/* eslint-enable camelcase */
 
 // ---------------------------------------------------------------------------
 // getAppConfig — environment and I/O behaviour
@@ -323,26 +392,59 @@ describe("config parsing", () => {
   // --- bugsnagApiKey ---
 
   describe("bugsnagApiKey", () => {
-    it("is null when absent", async () => {
+    it("is null when BUGSNAG_API_KEY env var is not set", async () => {
+      delete process.env.BUGSNAG_API_KEY;
       expect((await load(MINIMAL_YAML)).bugsnagApiKey).toBeNull();
     });
 
-    it("uses the string value of bugsnag_api_key", async () => {
-      expect((await load(`bugsnag_api_key: abc123`)).bugsnagApiKey).toBe(
-        "abc123"
-      );
+    it("reads from the BUGSNAG_API_KEY env var", async () => {
+      process.env.BUGSNAG_API_KEY = "env-key-123";
+      expect((await load(MINIMAL_YAML)).bugsnagApiKey).toBe("env-key-123");
+    });
+
+    describe("deprecation warning when bugsnag_api_key is in config file", () => {
+      test.each<[string, string | undefined, string | null]>([
+        ["env var set — uses env var", "env-key", "env-key"],
+        ["env var absent — bugsnagApiKey is null", undefined, null]
+      ])("%s", async (_label, envValue, expectedKey) => {
+        if (envValue !== undefined) {
+          process.env.BUGSNAG_API_KEY = envValue;
+        } else {
+          delete process.env.BUGSNAG_API_KEY;
+        }
+        const spy = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const config = await load("bugsnag_api_key: yaml-key");
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining("BUGSNAG_API_KEY")
+        );
+        if (envValue === undefined) {
+          expect(spy).toHaveBeenCalledWith(
+            expect.stringContaining("Bugsnag will not be configured")
+          );
+        } else {
+          expect(spy).not.toHaveBeenCalledWith(
+            expect.stringContaining("Bugsnag will not be configured")
+          );
+        }
+        expect(config.bugsnagApiKey).toBe(expectedKey);
+        spy.mockRestore();
+      });
     });
   });
 
-  // --- gtmId ---
+  // --- gtmId (deprecated) ---
 
-  describe("gtmId", () => {
-    it("is null when absent", async () => {
-      expect((await load(MINIMAL_YAML)).gtmId).toBeNull();
+  describe("gtmId (deprecated)", () => {
+    it("does not appear in config when absent", async () => {
+      expect(await load(MINIMAL_YAML)).not.toHaveProperty("gtmId");
     });
 
-    it("uses the string value of gtmId", async () => {
-      expect((await load(`gtmId: GTM-XXXX`)).gtmId).toBe("GTM-XXXX");
+    it("logs a deprecation warning and ignores the value when gtm_id is set", async () => {
+      const spy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await load("gtm_id: GTM-XXXX");
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("GTM_ID"));
+      expect(config).not.toHaveProperty("gtmId");
+      spy.mockRestore();
     });
   });
 
@@ -623,7 +725,7 @@ describe("config parsing", () => {
         "  other-lib: https://other.example.com/auth"
       ].join("\n");
       await expect(load(yaml)).rejects.toThrow(
-        "'staticLibraries' and the object form of 'libraries' cannot both be set"
+        "'static_libraries' and the object form of 'libraries' cannot both be set"
       );
     });
   });
@@ -693,55 +795,124 @@ describe("config parsing", () => {
       [
         "null entry",
         "staticLibraries:\n  bad-lib: null",
-        "CONFIG_FILE.staticLibraries['bad-lib'] cannot be null or undefined"
+        "CONFIG_FILE.static_libraries['bad-lib'] cannot be null or undefined"
       ],
       [
         "empty string entry",
         `staticLibraries:\n  bad-lib: ""`,
-        "CONFIG_FILE.staticLibraries['bad-lib'] cannot be an empty string"
+        "CONFIG_FILE.static_libraries['bad-lib'] cannot be an empty string"
       ],
       [
         "whitespace-only string entry",
         `staticLibraries:\n  bad-lib: "   "`,
-        "CONFIG_FILE.staticLibraries['bad-lib'] cannot be an empty string"
+        "CONFIG_FILE.static_libraries['bad-lib'] cannot be an empty string"
       ],
       [
         "object missing authDocUrl",
         "staticLibraries:\n  bad-lib:\n    title: My Library",
-        "CONFIG_FILE.staticLibraries['bad-lib'] must have an 'authDocUrl' property with a valid URL string"
+        "CONFIG_FILE.static_libraries['bad-lib'] must have an 'authDocUrl' property with a valid URL string"
       ],
       [
         "object with non-string authDocUrl",
         "staticLibraries:\n  bad-lib:\n    authDocUrl: 12345",
-        "CONFIG_FILE.staticLibraries['bad-lib'] must have an 'authDocUrl' property with a valid URL string"
+        "CONFIG_FILE.static_libraries['bad-lib'] must have an 'authDocUrl' property with a valid URL string"
       ],
       [
         "object with empty authDocUrl",
         `staticLibraries:\n  bad-lib:\n    authDocUrl: ""`,
-        "CONFIG_FILE.staticLibraries['bad-lib'].authDocUrl cannot be an empty string"
+        "CONFIG_FILE.static_libraries['bad-lib'].authDocUrl cannot be an empty string"
       ],
       [
         "object with non-string title",
         "staticLibraries:\n  bad-lib:\n    authDocUrl: https://example.com/auth\n    title: 123",
-        "CONFIG_FILE.staticLibraries['bad-lib'].title must be a string"
+        "CONFIG_FILE.static_libraries['bad-lib'].title must be a string"
       ],
       [
         "object with empty title",
         `staticLibraries:\n  bad-lib:\n    authDocUrl: https://example.com/auth\n    title: ""`,
-        "CONFIG_FILE.staticLibraries['bad-lib'].title cannot be an empty string"
+        "CONFIG_FILE.static_libraries['bad-lib'].title cannot be an empty string"
       ],
       [
         "numeric entry",
         "staticLibraries:\n  bad-lib: 12345",
-        "CONFIG_FILE.staticLibraries['bad-lib'] must be either a string (auth doc URL) or an object with 'authDocUrl' property"
+        "CONFIG_FILE.static_libraries['bad-lib'] must be either a string (auth doc URL) or an object with 'authDocUrl' property"
       ],
       [
         "boolean entry",
         "staticLibraries:\n  bad-lib: true",
-        "CONFIG_FILE.staticLibraries['bad-lib'] must be either a string (auth doc URL) or an object with 'authDocUrl' property"
+        "CONFIG_FILE.static_libraries['bad-lib'] must be either a string (auth doc URL) or an object with 'authDocUrl' property"
       ]
     ])("throws AppSetupError for %s", async (_label, yaml, expectedMessage) => {
       await expect(load(yaml)).rejects.toThrow(expectedMessage);
     });
+  });
+
+  // --- key form tolerance ---
+
+  describe("key form tolerance", () => {
+    const SNAKE_YAML = [
+      "instance_name: Test Instance",
+      "companion_app: openebooks",
+      "show_medium: false",
+      "static_libraries:",
+      "  my-lib:",
+      "    auth_doc_url: https://example.com/auth",
+      "    title: My Library",
+      "media_support:",
+      "  application/epub+zip: show",
+      "registries:",
+      "  - url: https://registry.example.com",
+      "    refresh_min_interval: 30",
+      "    refresh_max_interval: 120",
+      "openebooks:",
+      "  default_library: my-lib"
+    ].join("\n");
+
+    const CAMEL_YAML = [
+      "instanceName: Test Instance",
+      "companionApp: openebooks",
+      "showMedium: false",
+      "staticLibraries:",
+      "  my-lib:",
+      "    authDocUrl: https://example.com/auth",
+      "    title: My Library",
+      "mediaSupport:",
+      "  application/epub+zip: show",
+      "registries:",
+      "  - url: https://registry.example.com",
+      "    refreshMinInterval: 30",
+      "    refreshMaxInterval: 120",
+      "openebooks:",
+      "  defaultLibrary: my-lib"
+    ].join("\n");
+
+    it.each([
+      ["snake_case", SNAKE_YAML],
+      ["camelCase", CAMEL_YAML]
+    ])(
+      "parses all top-level keys from %s YAML into identical config",
+      async (_form, yaml) => {
+        expect(await load(yaml)).toMatchObject({
+          instanceName: "Test Instance",
+          companionApp: "openebooks",
+          showMedium: false,
+          staticLibraries: {
+            "my-lib": {
+              title: "My Library",
+              authDocUrl: "https://example.com/auth"
+            }
+          },
+          mediaSupport: { "application/epub+zip": "show" },
+          registries: [
+            {
+              url: "https://registry.example.com",
+              refreshMinInterval: 30,
+              refreshMaxInterval: 120
+            }
+          ],
+          openebooks: { defaultLibrary: "my-lib" }
+        });
+      }
+    );
   });
 });

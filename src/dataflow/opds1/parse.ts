@@ -35,6 +35,7 @@ import { getAppSupportLevel } from "utils/fulfill";
 import { TrackOpenBookRel } from "types/opds1";
 import DOMPurify from "dompurify";
 import { bookIsAudiobook } from "utils/book";
+import { formatDuration } from "utils/duration";
 
 /**
  * Parses OPDS 1.x Feed or Entry into a Collection or Book
@@ -196,6 +197,29 @@ function findRevokeUrl(links: OPDSLink[]) {
   return links.find(link => link.rel === OPDS1.RevokeLinkRel)?.href ?? null;
 }
 
+function getNarrators(entry: OPDSEntry): string[] | undefined {
+  if (entry.contributors.length > 0) {
+    return entry.contributors.filter(c => c.role === "nrt").map(c => c.name);
+  }
+
+  return undefined;
+}
+
+function getDuration(entry: OPDSEntry): string | undefined {
+  const entryDuration = entry.unparsed?.["dcterms:duration"];
+  if (entryDuration && entryDuration.length > 0) {
+    const duration = entryDuration.find(
+      term => term?.["$ns"].local === "duration"
+    )?._;
+
+    if (duration) {
+      return formatDuration(duration);
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Converters
  */
@@ -206,6 +230,8 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
       return author.name;
     })
     .filter(name => name !== undefined);
+
+  const narrators = getNarrators(entry);
 
   const contributors = entry.contributors.map(contributor => {
     return contributor.name;
@@ -234,7 +260,12 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
 
   const categories = entry.categories
     .filter(category => !!category.label)
+    .filter(category => category.scheme !== "http://schema.org/audience")
     .map(category => category.label);
+
+  const audience = entry.categories.find(
+    c => c.scheme === "http://schema.org/audience"
+  )?.label;
 
   const acquisitionLinks = entry.links.filter(isAcquisitionLink);
 
@@ -281,6 +312,7 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
 
   const bibframeTags = entryToBibframeData(entry);
   const providerName = getProviderName(bibframeTags);
+  const duration = getDuration(entry);
 
   const book: Book = {
     id: entry.id,
@@ -299,11 +331,14 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
     },
     holds: holds,
     copies: copies,
+    audience: audience,
+    duration: duration,
     publisher: entry.publisher,
     published: entry.issued && formatDate(entry.issued),
     categories: categories,
     providerName: providerName,
     language: entry.language,
+    narrators: narrators,
     url: detailUrl,
     relatedUrl: relatedLink?.href ?? null,
     trackOpenBookUrl: trackOpenBookLink?.href ?? null,
