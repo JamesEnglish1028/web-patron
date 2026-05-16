@@ -1,9 +1,17 @@
 import * as React from "react";
 import Select from "./Select";
-import Router from "next/router";
+import { useRouter } from "next/router";
 import { CollectionData, FacetGroupData } from "interfaces";
 import FormLabel from "components/form/FormLabel";
 import useLinkUtils from "hooks/useLinkUtils";
+
+const facetSortOrder: Record<string, number> = {
+  all: 0,
+  ebooks: 1,
+  books: 1,
+  audiobooks: 2,
+  periodicals: 3
+};
 
 const ListFilters: React.FC<{ collection: CollectionData }> = ({
   collection
@@ -27,9 +35,23 @@ const ListFilters: React.FC<{ collection: CollectionData }> = ({
 const FacetSelector: React.FC<{
   facetGroup: FacetGroupData;
 }> = ({ facetGroup }) => {
+  const router = useRouter();
   const linkUtils = useLinkUtils();
 
   const { label, facets } = facetGroup;
+
+  const displayFacetLabel = (facetLabel: string) => {
+    return facetLabel.trim().toLowerCase() === "books" ? "Ebooks" : facetLabel;
+  };
+
+  const orderedFacets = React.useMemo(() => {
+    return [...facets].sort((a, b) => {
+      const aRank = facetSortOrder[a.label.trim().toLowerCase()] ?? 999;
+      const bRank = facetSortOrder[b.label.trim().toLowerCase()] ?? 999;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.label.localeCompare(b.label);
+    });
+  }, [facets]);
 
   const activeFacet = facets.find(facet => !!facet.active);
 
@@ -42,7 +64,7 @@ const FacetSelector: React.FC<{
     const url = linkUtils.buildCollectionLink(facet.href);
     // shallow route because we don't need to rerun getStaticProps for the new page,
     // just fetch the new collection client-side
-    Router.push(url, undefined, { shallow: true });
+    router.push(url, undefined, { shallow: true });
   };
   return (
     <div sx={{ m: 1 }}>
@@ -55,9 +77,9 @@ const FacetSelector: React.FC<{
         onBlur={handleChange}
         onChange={handleChange}
       >
-        {facets.map(facet => (
+        {orderedFacets.map(facet => (
           <option key={facet.label} value={facet.label}>
-            {facet.label}
+            {displayFacetLabel(facet.label)}
           </option>
         ))}
       </Select>

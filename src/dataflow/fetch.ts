@@ -4,6 +4,7 @@
  */
 
 import { FetchError } from "errors";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 type HttpMethod = "GET" | "DELETE" | "POST" | "PUT";
 
@@ -13,6 +14,7 @@ export default async function fetchWithHeaders(
   additionalHeaders?: { [key: string]: string | undefined },
   method: HttpMethod = "GET"
 ) {
+  const requestUrl = toBrowserFetchUrl(url);
   const headers = prepareHeaders(token, additionalHeaders);
 
   /**
@@ -21,8 +23,19 @@ export default async function fetchWithHeaders(
    * CORS issues. We catch and rethrow a wrapped error in those cases to give more info.
    */
   try {
-    return await fetch(url, { method, headers });
+    return await fetch(requestUrl, { method, headers });
   } catch (e) {
+    if (headers["X-Requested-With"] !== undefined) {
+      const retryHeaders = { ...headers };
+      delete retryHeaders["X-Requested-With"];
+
+      try {
+        return await fetch(requestUrl, { method, headers: retryHeaders });
+      } catch (retryError) {
+        throw new FetchError(url, retryError);
+      }
+    }
+
     throw new FetchError(url, e);
   }
 }

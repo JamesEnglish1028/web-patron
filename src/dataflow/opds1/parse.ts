@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import {
   OPDSFeed,
   OPDSEntry,
@@ -168,6 +167,16 @@ function buildFulfillmentLink(feedUrl: string) {
   return (link: OPDSAcquisitionLink): FulfillmentLink => {
     const { contentType, indirectionType } = parseFormat(link);
     const supportLevel = getAppSupportLevel(contentType, indirectionType);
+    const templated = Boolean(
+      (link as any).templated ?? (link as any).template
+    );
+    const uriTemplateVariables =
+      templated && (link as any).properties?.uri_template_variables?.map
+        ? ((link as any).properties.uri_template_variables.map as Record<
+            string,
+            { term: string; required?: boolean }
+          >)
+        : undefined;
     return {
       supportLevel,
       url: resolve(feedUrl, link.href),
@@ -176,7 +185,10 @@ function buildFulfillmentLink(feedUrl: string) {
         indirectionType as
           | OPDS1.IndirectAcquisitionType
           | typeof OPDS1.IncorrectAdobeDrmMediaType
-      )
+      ),
+      rel: link.rel,
+      templated,
+      ...(uriTemplateVariables ? { uriTemplateVariables } : {})
     };
   };
 }
@@ -270,7 +282,9 @@ export function entryToBook(entry: OPDSEntry, feedUrl: string): AnyBook {
       return {
         url: resolve(feedUrl, link.href),
         contentType: link.type as OPDS1.AnyBookMediaType,
-        supportLevel
+        supportLevel,
+        rel: link.rel,
+        templated: Boolean((link as any).templated ?? (link as any).template)
       };
     });
 

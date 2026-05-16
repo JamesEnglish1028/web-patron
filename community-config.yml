@@ -26,9 +26,12 @@ media_support:
   # AxisNow document (read online in Webpub Viewer) - not supported in community version
   # application/vnd.librarysimplified.axisnow+json: show
   # Audiobooks
-  application/audiobook+json: redirect
+  # Palace non-DRM audiobooks (bearer-token protected) are played in-app.
+  # LCP and Overdrive/Findaway remain unsupported for in-browser playback.
+  application/audiobook+json: show
+  application/audiobook+lcp: redirect
   application/vnd.overdrive.circulation.api+json;profile=audiobook: redirect
-  application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": redirect
+  application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
   application/vnd.librarysimplified.findaway.license+json: redirect
 
   ### INDIRECT TYPES
@@ -41,9 +44,15 @@ media_support:
     application/epub+zip: redirect-and-show
 
   # Bearer Token Exchange
+  # Palace Manager issues a bearer-token document on the fulfill endpoint for
+  # non-DRM audiobooks protected by a third-party bearer token.
   application/vnd.librarysimplified.bearer-token+json:
     application/pdf: show
     application/epub+zip: show
+    application/audiobook+json: show
+    application/audiobook+json;profile="http://www.feedbooks.com/audiobooks/access-restriction": show
+    # LCP audiobooks via bearer-token are still not playable in a web browser
+    # application/audiobook+lcp: redirect
 
 # defines the companion app for the instance. Can be "simplye" or "openebooks"
 # default is "simplye"

@@ -4,7 +4,7 @@ const variants = {
       primary: {
         fontFamily: "body",
         fontSize: 4,
-        fontWeight: "light",
+        fontWeight: "bold",
         lineHeight: 1
       },
       secondary: {

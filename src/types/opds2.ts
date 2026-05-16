@@ -1,4 +1,3 @@
-/* eslint-disable camelcase */
 import { OPDS1 } from "interfaces";
 /**
  * OPDS 2.0 DATA TYPES

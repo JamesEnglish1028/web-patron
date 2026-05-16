@@ -54,7 +54,7 @@ describe("fetching catalog", () => {
     const promise = fetchFeed("not a valid url");
     await expect(promise).rejects.toThrow(Error);
     await expect(promise).rejects.toThrowErrorMatchingInlineSnapshot(
-      `"Fetch Error: The fetch promise for the requested resource was rejected. This is probably an offline, CORS, or other network error. Requested URL: not a valid url"`
+      `"OPDS Error: Could not parse fetch response into an OPDS Feed or Entry"`
     );
   });
 });
@@ -131,6 +131,8 @@ describe("fetchAuthDocument", () => {
     const mockResponse = {
       ok: false,
       status: 403,
+      headers: { get: jest.fn().mockReturnValue(null) },
+      text: jest.fn().mockResolvedValue("Forbidden"),
       json: jest.fn().mockResolvedValue({ error: "Forbidden" })
     };
 
@@ -159,6 +161,16 @@ describe("buildLibraryData", () => {
       authMethods: [],
       libraryLinks: {}
     });
+  });
+
+  test("uses a resolved catalog url override when provided", () => {
+    const library = buildLibraryData(
+      fixtures.authDoc,
+      "librarySlug",
+      "/catalog-root/groups/"
+    );
+
+    expect(library.catalogUrl).toBe("/catalog-root/groups/");
   });
 
   test("throws ApplicationError with auth doc URL, if auth doc has no catalog root url", () => {

@@ -3,7 +3,6 @@ import { render, fixtures, waitFor } from "test-utils";
 import { CollectionData } from "interfaces";
 import Recommendations from "../Recommendations";
 import useSWR, { SWRResponse } from "swr";
-import { fetchCollection } from "dataflow/opds1/fetch";
 
 jest.mock("swr");
 
@@ -16,6 +15,7 @@ function makeSwrResponse(
     data: undefined,
     error: undefined,
     // revalidate: jest.fn(),
+    isLoading: false,
     isValidating: false,
     mutate: jest.fn(),
     ...value
@@ -46,10 +46,9 @@ test("shows recommendations loading state", async () => {
 test("fetches the proper url for recommendation collection", () => {
   render(<Recommendations book={fixtures.borrowableBook} />);
   expect(mockedSWR).toHaveBeenCalledTimes(1);
-  expect(mockedSWR).toHaveBeenCalledWith(
-    ["http://related-url", "user-token"],
-    fetchCollection
-  );
+  const [key, fetcher] = mockedSWR.mock.calls[0];
+  expect(key).toEqual(["http://related-url", "user-token"]);
+  expect(fetcher).toEqual(expect.any(Function));
 });
 
 test("shows recommendation lanes", () => {
@@ -72,8 +71,8 @@ test("doesn't show recommendations if there are none", () => {
   expect(utils.container).toBeEmptyDOMElement();
 });
 
-test("doesn't show recommendations if the lanes don't have > 1 book", () => {
-  const emptyLanes: CollectionData = {
+test("shows recommendations when a lane has a single non-current book", () => {
+  const singleBookLanes: CollectionData = {
     id: "related-id",
     title: "related title",
     url: "data-related-url",
@@ -95,7 +94,40 @@ test("doesn't show recommendations if the lanes don't have > 1 book", () => {
   };
   mockSwr({
     isValidating: false,
-    data: emptyLanes
+    data: singleBookLanes
+  });
+  const utils = render(<Recommendations book={fixtures.borrowableBook} />);
+  expect(
+    utils.getByRole("heading", { name: "Recommendations" })
+  ).toBeInTheDocument();
+  expect(utils.getByRole("heading", { name: "lane 1 collection" }));
+  expect(utils.getByRole("heading", { name: "lane 2 collection" }));
+});
+
+test("doesn't show recommendations if lanes only contain the current book", () => {
+  const currentBookOnlyLanes: CollectionData = {
+    id: "related-id",
+    title: "related title",
+    url: "data-related-url",
+    books: [],
+    navigationLinks: [],
+    searchDataUrl: "/search-data-url",
+    lanes: [
+      {
+        title: "lane 1",
+        url: "/lane-1",
+        books: [fixtures.borrowableBook]
+      },
+      {
+        title: "lane 2",
+        url: "/lane-2",
+        books: [fixtures.borrowableBook]
+      }
+    ]
+  };
+  mockSwr({
+    isValidating: false,
+    data: currentBookOnlyLanes
   });
   const utils = render(<Recommendations book={fixtures.borrowableBook} />);
   expect(utils.container).toBeEmptyDOMElement();

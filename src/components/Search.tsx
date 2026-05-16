@@ -1,14 +1,25 @@
 import * as React from "react";
 import TextInput from "./TextInput";
 import Button from "./Button";
-import Router from "next/router";
-import SvgSearch from "icons/Search";
+import { useRouter } from "next/router";
 import useLinkUtils from "hooks/useLinkUtils";
 import useSWR from "swr";
 import useCollection from "hooks/useCollection";
 import { fetchSearchData } from "dataflow/opds1/fetch";
 import ApplicationError from "errors";
 import { SearchData } from "interfaces";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import type { ThemeUIStyleObject } from "theme-ui";
+
+const SearchIcon: React.FC<{ className?: string; sx?: ThemeUIStyleObject }> = ({
+  className,
+  sx
+}) => (
+  <span className={className} sx={sx}>
+    <FontAwesomeIcon icon={faMagnifyingGlass} />
+  </span>
+);
 
 interface SearchProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
@@ -26,6 +37,7 @@ let searchData: null | SearchData = null;
  */
 
 const Search: React.FC<SearchProps> = ({ className, ...props }) => {
+  const router = useRouter();
   const [value, setValue] = React.useState("");
   const linkUtils = useLinkUtils();
   const { collection, error } = useCollection();
@@ -55,7 +67,7 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
     );
     if (!url) return;
     const link = linkUtils.buildCollectionLink(url);
-    Router.push(link, undefined, { shallow: true });
+    router.push(link, undefined, { shallow: true });
   };
 
   return (
@@ -76,6 +88,8 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
         onChange={e => setValue(e.target.value)}
         sx={{
           borderRight: "none",
+          borderTopLeftRadius: "button",
+          borderBottomLeftRadius: "button",
           borderTopRightRadius: 0,
           borderBottomRightRadius: 0
         }}
@@ -88,7 +102,7 @@ const Search: React.FC<SearchProps> = ({ className, ...props }) => {
           height: "initial",
           flex: "1 0 auto"
         }}
-        iconLeft={SvgSearch}
+        iconLeft={SearchIcon}
       >
         Search
       </Button>

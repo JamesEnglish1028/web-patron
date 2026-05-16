@@ -15,6 +15,7 @@ import useSWR from "swr";
 import { BasicTokenAuthType } from "types/opds1";
 import { PATRON_PROFILE_FIELDS } from "types/patronProfile";
 import { addHours } from "date-fns";
+import { toBrowserFetchUrl } from "utils/localCmProxy";
 
 /**
  * Captures authentication failure context for redirect-based auth methods.
@@ -36,6 +37,7 @@ export interface AuthFailureContext {
 type Status = "authenticated" | "loading" | "unauthenticated";
 export type UserState = {
   loans: AnyBook[] | undefined;
+  annotationServiceUrl: string | undefined;
   patronId: string | undefined;
   status: Status;
   isAuthenticated: boolean;
@@ -200,12 +202,15 @@ export const UserProvider = ({ children }: UserProviderProps) => {
   }
 
   function setBook(book: AnyBook, id?: string) {
-    const existing = data ?? [];
+    const existing = data?.books ?? [];
 
     // if the id exists, remove that book and set the new one
     const withoutOldBook = existing.filter(book => book.id !== id);
-    const newData: AnyBook[] = [...withoutOldBook, book];
-    mutate(newData);
+    const newBooks: AnyBook[] = [...withoutOldBook, book];
+    mutate({
+      books: newBooks,
+      annotationServiceUrl: data?.annotationServiceUrl
+    });
   }
 
   // Clear auth failure context when credentials change or on successful auth
@@ -232,7 +237,10 @@ export const UserProvider = ({ children }: UserProviderProps) => {
     status,
     isAuthenticated,
     isLoading,
-    loans: isAuthenticated ? (data ?? []) : undefined,
+    loans: isAuthenticated ? (data?.books ?? []) : undefined,
+    annotationServiceUrl: isAuthenticated
+      ? data?.annotationServiceUrl
+      : undefined,
     patronId,
     refetchLoans: mutate,
     signIn,
@@ -271,22 +279,52 @@ export default function useUser() {
   return context;
 }
 
-// we only need the books out of a collection for loans,
-// so this is a utility to extract those.
-async function fetchLoans(url: string, token: string) {
+const ANNOTATION_SERVICE_REL = "http://www.w3.org/ns/oa#annotationService";
+
+// Fetch the patron's loans shelf and extract both the books and the
+// per-patron annotation service URL (present as a collection-level link).
+async function fetchLoans([url, token]: readonly [
+  string,
+  string | undefined,
+  AppAuthMethod["type"]
+]): Promise<{ books: AnyBook[]; annotationServiceUrl: string | undefined }> {
   const collection = await fetchCollection(url, token);
-  return collection.books;
+  const annotationServiceUrl =
+    collection.links?.find(link => link.type === ANNOTATION_SERVICE_REL)?.url ??
+    undefined;
+  return { books: collection.books, annotationServiceUrl };
 }
 
-async function fetchPatronProfile(url: string, token: string) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: token
-    }
+async function fetchPatronProfile([url, token]: readonly [
+  string,
+  string | undefined
+]) {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = token;
+  }
+
+  const response = await fetch(toBrowserFetchUrl(url), {
+    headers
   });
 
   if (!response.ok) {
-    throw new ServerError(url, response.status, await response.json());
+    const contentType =
+      response.headers.get("content-type")?.toLowerCase() ?? "";
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("+json")
+    ) {
+      throw new ServerError(url, response.status, await response.json());
+    }
+
+    const text = await response.text();
+    throw new ServerError(url, response.status, {
+      title: "Server Error",
+      detail:
+        text.trim().slice(0, 300) || "Unexpected non-JSON error response body.",
+      status: response.status
+    });
   }
 
   return response.json();

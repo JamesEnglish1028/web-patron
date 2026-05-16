@@ -5,8 +5,8 @@ import variants from "./variants";
 import styles from "./styles";
 
 const radii = [0, 2, 4] as Overloadable<number[], number>;
-radii.card = radii[2];
-radii.button = radii[1];
+radii.card = 8;
+radii.button = 8;
 
 const borders = {
   solid: `1px solid ${colors.ui.gray.medium}`

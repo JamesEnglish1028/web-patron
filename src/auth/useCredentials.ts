@@ -88,11 +88,22 @@ export default function useCredentials(slug: string | null) {
   const { token: urlToken, methodType: urlMethodType } =
     getUrlCredentials(router, authMethods) ?? {};
 
+  const processedUrlCredentialsRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     if (urlToken && urlMethodType) {
+      const signature = `${urlMethodType}:${urlToken}`;
+      if (processedUrlCredentialsRef.current === signature) {
+        return;
+      }
+
+      processedUrlCredentialsRef.current = signature;
       setCredentials({ token: urlToken, methodType: urlMethodType });
+      clearUrlAuthCredentials(router);
+    } else {
+      processedUrlCredentialsRef.current = null;
     }
-  }, [urlToken, urlMethodType, setCredentials]);
+  }, [urlToken, urlMethodType, router, setCredentials]);
 
   // URL credentials are exposed synchronously so child components (e.g.
   // AuthProtectedRoute) don't redirect to login before the useEffect above
@@ -174,14 +185,12 @@ function getUrlCredentials(
   /* TODO: throw error if access tokens exist at the same time as this is an invalid state that shouldn't be reached */
   return IS_SERVER
     ? undefined
-    : (lookForCleverCredentials(router) ??
+    : (lookForCleverCredentials() ??
         lookForRedirectAuthCredentials(router, authMethods));
 }
 
 // check for clever credentials
-function lookForCleverCredentials(
-  router: NextRouter
-): AuthCredentials | undefined {
+function lookForCleverCredentials(): AuthCredentials | undefined {
   if (!IS_SERVER) {
     const accessTokenKey = "access_token=";
     if (window?.location?.hash) {
@@ -192,13 +201,6 @@ function lookForCleverCredentials(
           .slice(accessTokenStart + accessTokenKey.length)
           .split("&")[0];
         const token = `Bearer ${accessToken}`;
-
-        // Clear Clever hash from URL to avoid re-authentication after sign out.
-        router.replace(
-          { pathname: router.pathname, query: router.query, hash: "" },
-          undefined,
-          { shallow: true }
-        );
 
         return { token, methodType: OPDS1.CleverAuthType };
       }
@@ -214,16 +216,6 @@ function lookForRedirectAuthCredentials(
 ): AuthCredentials | undefined {
   const { [REDIRECT_LOGIN_QUERY_PARAM]: accessToken } = router.query;
   if (accessToken) {
-    if (!IS_SERVER && typeof window !== "undefined") {
-      // Clear token from URL to avoid re-authentication after sign out.
-      const { [REDIRECT_LOGIN_QUERY_PARAM]: _, ...restQuery } = router.query;
-      router.replace(
-        { pathname: router.pathname, query: restQuery },
-        undefined,
-        { shallow: true }
-      );
-    }
-
     // Determine which redirect auth type to use based on order in authentication document.
     // We authenticate with the first supported auth type, so use that order here.
     const redirectAuthMethod = authMethods.find(
@@ -237,5 +229,32 @@ function lookForRedirectAuthCredentials(
       token: `Bearer ${accessToken}`,
       methodType
     };
+  }
+}
+
+function clearUrlAuthCredentials(router: NextRouter) {
+  if (IS_SERVER || typeof window === "undefined") {
+    return;
+  }
+
+  const accessTokenKey = "access_token=";
+  if (window.location.hash?.indexOf(accessTokenKey) !== -1) {
+    // Clear Clever hash from URL to avoid re-authentication after sign out.
+    void router.replace(
+      { pathname: router.pathname, query: router.query, hash: "" },
+      undefined,
+      { shallow: true }
+    );
+    return;
+  }
+
+  if (router.query[REDIRECT_LOGIN_QUERY_PARAM]) {
+    // Clear redirect access token from URL to avoid re-authentication after sign out.
+    const { [REDIRECT_LOGIN_QUERY_PARAM]: _, ...restQuery } = router.query;
+    void router.replace(
+      { pathname: router.pathname, query: restQuery },
+      undefined,
+      { shallow: true }
+    );
   }
 }

@@ -489,7 +489,9 @@ test("includes open access links with fulfillable book", () => {
   expect((book as any).fulfillmentLinks[0]).toEqual({
     supportLevel: "show",
     url: "http://example.com/open.epub",
-    contentType: OPDS1.EpubMediaType
+    contentType: OPDS1.EpubMediaType,
+    rel: OPDSAcquisitionLink.OPEN_ACCESS_REL,
+    templated: false
   });
 });
 

@@ -23,6 +23,7 @@ const LoginWrapper = ({ children }: LoginWrapperProps) => {
   const { catalogName } = useLibraryContext();
   const { push } = useRouter();
   const { successPath } = useLoginRedirectUrl();
+  const lastRedirectRef = React.useRef<string | null>(null);
 
   /**
    * If the user becomes authenticated, we can redirect
@@ -30,7 +31,13 @@ const LoginWrapper = ({ children }: LoginWrapperProps) => {
    */
   React.useEffect(() => {
     if (isAuthenticated) {
+      if (lastRedirectRef.current === successPath) {
+        return;
+      }
+      lastRedirectRef.current = successPath;
       push(successPath, undefined, { shallow: true });
+    } else {
+      lastRedirectRef.current = null;
     }
   }, [isAuthenticated, push, successPath]);
 

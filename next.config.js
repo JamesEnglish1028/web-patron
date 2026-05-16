@@ -20,7 +20,8 @@ const RELEASE_STAGE =
     ? "qa"
     : "development";
 
-const BUILD_ID = `${APP_VERSION}-${GIT_BRANCH}.${GIT_COMMIT_SHA}`;
+const BUILD_ID =
+  process.env.BUILD_ID || `${APP_VERSION}-${GIT_BRANCH}.${GIT_COMMIT_SHA}`;
 
 // log some info to the console for the record.
 log(`CONFIG_FILE: ${process.env.CONFIG_FILE ?? "(resolved at runtime)"}`);
@@ -32,11 +33,19 @@ log(`BUILD_ID: ${BUILD_ID}`);
 log(`BUGSNAG_API_KEY: ${process.env.BUGSNAG_API_KEY ?? "(not set)"}`);
 log(`GTM_ID: ${process.env.GTM_ID ?? "(not set)"}`);
 
+// Point pdfjs-dist to the top-level package so it is NOT inside react-pdf's
+// node_modules path — this keeps Babel (transpilePackages:"react-pdf") from
+// double-transforming the already-compiled pdfjs class definitions.
+const topLevelPdfJsEntry = require.resolve("pdfjs-dist");
+
 const config = {
   output: "standalone",
-  transpilePackages: ["@thepalaceproject/webpub-viewer"],
+  transpilePackages: [
+    "@thepalaceproject/webpub-viewer",
+    "@thepalaceproject/reader"
+  ],
   env: {
-    REACT_AXE: REACT_AXE,
+    REACT_AXE,
     APP_VERSION: APP_VERSION ?? undefined,
     BUILD_ID,
     GIT_BRANCH: GIT_BRANCH ?? undefined,
@@ -71,6 +80,11 @@ const config = {
     if (!isServer) {
       config.resolve.fallback.fs = false;
     }
+
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "pdfjs-dist$": topLevelPdfJsEntry
+    };
 
     return config;
   }

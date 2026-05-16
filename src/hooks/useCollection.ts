@@ -16,7 +16,13 @@ export default function useCollection() {
   const collectionUrlParam = extractParam(query, "collectionUrl") ?? null;
   // use catalog url if you're at home
   const isLibraryHome = pathname === "/[library]";
-  const collectionUrl = isLibraryHome ? catalogUrl : collectionUrlParam;
+  const [homeCollectionUrl, setHomeCollectionUrl] = React.useState(catalogUrl);
+
+  React.useEffect(() => {
+    setHomeCollectionUrl(catalogUrl);
+  }, [catalogUrl]);
+
+  const collectionUrl = isLibraryHome ? homeCollectionUrl : collectionUrlParam;
 
   const {
     data: collection,
@@ -24,7 +30,8 @@ export default function useCollection() {
     isValidating
   } = useSWR<CollectionData, Error | ApplicationError>(
     collectionUrl ? [collectionUrl, token] : null,
-    fetchCollection
+    ([url, tok]: readonly [string, string | undefined]) =>
+      fetchCollection(url, tok)
   );
 
   // make sure unidentified errors are wrapped in an ApplicationError
@@ -48,6 +55,19 @@ export default function useCollection() {
   React.useEffect(() => {
     cacheCollectionBooks(collection);
   }, [collection]);
+
+  // Some catalogs resolve the root to a specific entrypoint (e.g. Books).
+  // Prefer the explicit "All" facet URL on first home load.
+  React.useEffect(() => {
+    if (!isLibraryHome || !collection?.facetGroups?.length) return;
+
+    const allFacet = collection.facetGroups
+      .flatMap(group => group.facets ?? [])
+      .find(facet => facet.label.trim().toLowerCase() === "all");
+
+    if (!allFacet?.href || allFacet.href === homeCollectionUrl) return;
+    setHomeCollectionUrl(allFacet.href);
+  }, [collection, homeCollectionUrl, isLibraryHome]);
 
   return { collection, collectionUrl, isValidating, error: applicationError };
 }

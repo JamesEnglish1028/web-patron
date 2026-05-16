@@ -4,6 +4,15 @@ import { SignOut } from "components/SignOut";
 import { OPDS1, ClientOidcMethod, ClientSamlMethod } from "interfaces";
 import { mockPush } from "../../test-utils/mockNextRouter";
 import fetchMock from "jest-fetch-mock";
+import { navigateToUrl } from "utils/navigation";
+
+jest.mock("utils/navigation", () => ({
+  navigateToUrl: jest.fn()
+}));
+
+const mockNavigateToUrl = navigateToUrl as jest.MockedFunction<
+  typeof navigateToUrl
+>;
 
 test("Shows button", () => {
   setup(<SignOut />);
@@ -111,17 +120,7 @@ describe("OIDC logout with logout endpoint", () => {
     }
   };
 
-  let originalLocation: Location;
-
-  beforeEach(() => {
-    originalLocation = window.location;
-    delete (window as any).location;
-    window.location = { ...originalLocation, href: "" } as any;
-  });
-
-  afterEach(() => {
-    (window as any).location = originalLocation;
-  });
+  beforeEach(() => mockNavigateToUrl.mockClear());
 
   test("clears local credentials immediately before fetching logout endpoint", async () => {
     fetchMock.mockResponseOnce("", { status: 200 });
@@ -166,7 +165,9 @@ describe("OIDC logout with logout endpoint", () => {
     });
 
     // Should navigate to our signed-out page (not the logout endpoint URL).
-    expect(window.location.href).toContain("/signed-out");
+    expect(mockNavigateToUrl).toHaveBeenCalledWith(
+      expect.stringContaining("/signed-out")
+    );
   });
 
   test("navigates to signed-out page when normalizeLink throws", async () => {
@@ -211,7 +212,9 @@ describe("OIDC logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
     expect(fixtures.mockSignOut).toHaveBeenCalled();
   });
@@ -230,7 +233,9 @@ describe("OIDC logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
 
     // Local credentials should still have been cleared
@@ -254,7 +259,9 @@ describe("OIDC logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
     expect(fixtures.mockSignOut).toHaveBeenCalled();
   });
@@ -293,18 +300,6 @@ describe("SAML logout with logout endpoint", () => {
       authMethods: [samlMethod]
     }
   };
-
-  let originalLocation: Location;
-
-  beforeEach(() => {
-    originalLocation = window.location;
-    delete (window as any).location;
-    window.location = { ...originalLocation, href: "" } as any;
-  });
-
-  afterEach(() => {
-    (window as any).location = originalLocation;
-  });
 
   test("clears local credentials immediately before fetching logout endpoint", async () => {
     fetchMock.mockResponseOnce("", { status: 200 });
@@ -346,7 +341,9 @@ describe("SAML logout with logout endpoint", () => {
       ).toBe("Bearer test-token");
     });
 
-    expect(window.location.href).toContain("/signed-out");
+    expect(mockNavigateToUrl).toHaveBeenCalledWith(
+      expect.stringContaining("/signed-out")
+    );
   });
 
   test("navigates to signed-out page when logout request fails", async () => {
@@ -363,7 +360,9 @@ describe("SAML logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
 
     expect(fixtures.mockSignOut).toHaveBeenCalled();
@@ -383,7 +382,9 @@ describe("SAML logout with logout endpoint", () => {
     await user.click(signOutForReal);
 
     await waitFor(() => {
-      expect(window.location.href).toContain("/signed-out");
+      expect(mockNavigateToUrl).toHaveBeenCalledWith(
+        expect.stringContaining("/signed-out")
+      );
     });
     expect(fixtures.mockSignOut).toHaveBeenCalled();
   });

@@ -1,5 +1,3 @@
-/* eslint-disable camelcase */
-
 /**
  * OPDS 2.0 DATA TYPES
  * Currently only used for support of a Library Registry, which is
@@ -156,6 +154,9 @@ export type FulfillmentLink = {
   url: string;
   indirectionType?: OPDS1.IndirectAcquisitionType;
   supportLevel: MediaSupportLevel;
+  rel?: string | string[];
+  templated?: boolean;
+  uriTemplateVariables?: Record<string, { term: string; required?: boolean }>;
 };
 
 export type AudioBookMedium = "http://bib.schema.org/Audiobook";
